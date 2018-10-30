@@ -1,0 +1,6 @@
+{
+	"node"      : true,
+	"esversion" : 6,
+	"multistr"  : true,
+	"eqnull"    : true
+}

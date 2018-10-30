@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<title>s4js</title>
+</head>
+
+<body>
+	<noscript>
+		You need to enable JavaScript to run this app.
+	</noscript>
+	<h3>Nothing to see here</h3>
+	<p>Open the Javascript console in your browser.</p>
+	<p>Seeing errors? Did you read this: examples/web/README.md ?</p>
+
+	<!--
+		The general idea is this:
+		1. First, initialize the `ModuleS4` object in the global scope
+		2. Next, tell the browser to (asynchronously) load the `libS4.js` script
+
+		This ensures that `libS4.js` will use our `ModuleS4` object,
+		giving us the hooks we need to listen for various events.
+	-->
+	<script type="text/javascript">
+		var onModuleS4Initialized = [];
+		var ModuleS4 = {
+			isRuntimeInitialized: false,
+			onRuntimeInitialized: function () {
+				console.log("WASM: ModuleS4.onRuntimeInitialized()");
+
+				ModuleS4.isRuntimeInitialized = true;
+				try {
+					for (var i = 0; i < onModuleS4Initialized.length; i++) {
+						var listener = onModuleS4Initialized[i];
+						listener();
+					}
+				}
+				catch (e) {
+					console.error("Exception while attempting to invoke listeners in onModuleS4Initialized array: " + e);
+				}
+			},
+			print: function (text) {
+				console.log("WASM [log]: " + text);
+			},
+			printErr: function (text) {
+				console.error("WASM [err]: " + text);
+			}
+		};
+	</script>
+	<script async type="text/javascript" src="../../dist.browser/libS4.js"></script>
+
+	<!--
+		Your own javascript will replace this code.
+		But here's a simple example of s4js:
+		
+		- waits for WASM to load
+		- initializes an `s4` instance
+		- uses it to calculate the hash of some string
+	-->
+	<script type="module" src="/examples/web/index.js"></script>
+</body>
+</html>
