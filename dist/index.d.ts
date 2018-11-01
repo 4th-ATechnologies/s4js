@@ -2,7 +2,6 @@
  * This is a wrapper for the S4 encryption library:
  * https://github.com/4th-ATechnologies/S4
  *
- *
  * ---- IMPORTANT -----
  *
  * This code was written in Typescript, and compiled to Javascript.
@@ -89,7 +88,7 @@ export declare enum S4CipherAlgorithm {
     THREEFISH1024 = 103,
     SharedKey = 200,
     ECC384 = 300,
-    ECC414 = 301
+    ECC41417 = 301
 }
 export declare enum S4Property {
     KeyType = "keyType",
@@ -211,7 +210,26 @@ export declare class S4 {
     cipher_getBlockSize(algorithm: S4CipherAlgorithm): number;
     cipher_algorithmIsAvailable(algorithm: S4CipherAlgorithm): boolean;
     /**
-     * ----- Cipher Block Chaining -----
+     * ----- Cipher Mode: Electronic Codebook (ECB) -----
+     *
+     * Note:
+     *   ECB mode is fine for encrypting a single block,
+     *   but not well-designed for encrypting multiple blocks:
+     *
+     *   https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation#Electronic_Codebook_(ECB)
+    **/
+    ecb_encrypt(options: {
+        algorithm: S4CipherAlgorithm;
+        key: Readonly<Uint8Array>;
+        input: Readonly<Uint8Array>;
+    }): Uint8Array | null;
+    ecb_decrypt(options: {
+        algorithm: S4CipherAlgorithm;
+        key: Readonly<Uint8Array>;
+        input: Readonly<Uint8Array>;
+    }): Uint8Array | null;
+    /**
+     * ----- Cipher Mode: Cipher Block Chaining (CBC) -----
     **/
     cbc_init(options: {
         algorithm: S4CipherAlgorithm;
@@ -294,9 +312,14 @@ export declare class S4 {
     key_getProperty(context: number, property: S4Property): any | null;
     key_free(context: number): void;
     /**
+     * ----- Internal Utilities -----
+    **/
+    private heap_copyBuffer;
+    /**
      * ----- Javascript Utilities -----
     **/
-    private util_copyBuffer;
+    util_concatBuffers(buffers: Array<Readonly<Uint8Array>>): Uint8Array;
+    util_compareBuffers(bufferA: Readonly<Uint8Array>, bufferB: Readonly<Uint8Array>): boolean;
     util_hexString(buffer: Readonly<Uint8Array>): string;
 }
 //# sourceMappingURL=index.d.ts.map

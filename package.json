@@ -7,6 +7,7 @@
 	"scripts": {
 		"prebuild": "mkdir -p dist && cp wasm/libS4* dist && mkdir -p dist.browser && cp wasm/libS4* dist.browser",
 		"build": "tsc && tsc -p tsconfig.browser.json",
+		"pretest": "npm run build",
 		"test": "mocha -r ts-node/register test/*.spec.ts"
 	},
 	"files": [

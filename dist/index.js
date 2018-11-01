@@ -3,7 +3,6 @@
  * This is a wrapper for the S4 encryption library:
  * https://github.com/4th-ATechnologies/S4
  *
- *
  * ---- IMPORTANT -----
  *
  * This code was written in Typescript, and compiled to Javascript.
@@ -82,7 +81,7 @@ var S4CipherAlgorithm;
     S4CipherAlgorithm[S4CipherAlgorithm["THREEFISH1024"] = 103] = "THREEFISH1024";
     S4CipherAlgorithm[S4CipherAlgorithm["SharedKey"] = 200] = "SharedKey";
     S4CipherAlgorithm[S4CipherAlgorithm["ECC384"] = 300] = "ECC384";
-    S4CipherAlgorithm[S4CipherAlgorithm["ECC414"] = 301] = "ECC414";
+    S4CipherAlgorithm[S4CipherAlgorithm["ECC41417"] = 301] = "ECC41417";
 })(S4CipherAlgorithm = exports.S4CipherAlgorithm || (exports.S4CipherAlgorithm = {}));
 ;
 var S4Property;
@@ -115,10 +114,16 @@ var S4PropertyType;
     S4PropertyType[S4PropertyType["Numeric"] = 4] = "Numeric";
 })(S4PropertyType || (S4PropertyType = {}));
 ;
-var NUM_BYTES_POINTER = (32 / 8);
-var NUM_BYTES_SIZE_T = (32 / 8);
-var S4 = /** @class */ (function () {
-    function S4(module) {
+const NUM_BYTES_POINTER = (32 / 8);
+const NUM_BYTES_SIZE_T = (32 / 8);
+class S4 {
+    static load(module) {
+        if (module && module._S4_Init) {
+            return new S4(module);
+        }
+        return null;
+    }
+    constructor(module) {
         this.module = module;
         // As of now, the S4_Init() method will never return an error,
         // despite the fact that the API indicates it could.
@@ -129,12 +134,6 @@ var S4 = /** @class */ (function () {
             console.log("S4_Init(): err: " + this.err_code);
         }
     }
-    S4.load = function (module) {
-        if (module && module._S4_Init) {
-            return new S4(module);
-        }
-        return null;
-    };
     /**
      * Utility method.
      *
@@ -144,55 +143,54 @@ var S4 = /** @class */ (function () {
      * This method combines the argType & arg as a tuple,
      * and adds strong typing to prevent bugs.
     **/
-    S4.prototype.ccall_wrapper = function (ident, returnType, params) {
-        var argTypes = [];
-        var args = [];
-        for (var _i = 0, params_1 = params; _i < params_1.length; _i++) {
-            var tuple = params_1[_i];
+    ccall_wrapper(ident, returnType, params) {
+        const argTypes = [];
+        const args = [];
+        for (const tuple of params) {
             argTypes.push(tuple[0]);
             args.push(tuple[1]);
         }
         return this.module.ccall(ident, returnType, argTypes, args);
-    };
+    }
     /**
      * ----- General -----
     **/
-    S4.prototype.version = function () {
+    version() {
         // S4Err S4_GetVersionString(size_t	bufSize, char *outString);
-        var max_bytes = 256;
-        var ptr = this.module._malloc(max_bytes);
+        const max_bytes = 256;
+        const ptr = this.module._malloc(max_bytes);
         this.err_code = this.ccall_wrapper("S4_GetVersionString", "number", [
             ["number", max_bytes],
             ["number", ptr]
         ]);
-        var result = "";
+        let result = "";
         if (this.err_code == S4Err.NoErr) {
             result = this.module.UTF8ToString(ptr);
         }
         this.module._free(ptr);
         return result;
-    };
+    }
     /**
      * Converts the given `err_code` to a human-readable string.
      * If no `err_code` is passed, uses this.err_code automatically.
     **/
-    S4.prototype.err_str = function (in_err_code) {
+    err_str(in_err_code) {
         // S4Err S4_GetErrorString(S4Err err, size_t bufSize, char *outString);
-        var max_bytes = 256;
-        var ptr = this.module._malloc(max_bytes);
-        var input = (in_err_code == null) ? this.err_code : in_err_code;
+        const max_bytes = 256;
+        const ptr = this.module._malloc(max_bytes);
+        const input = (in_err_code == null) ? this.err_code : in_err_code;
         this.err_code = this.ccall_wrapper("S4_GetErrorString", "number", [
             ["number", input],
             ["number", max_bytes],
             ["number", ptr]
         ]);
-        var result = "";
+        let result = "";
         if (this.err_code == S4Err.NoErr) {
             result = this.module.UTF8ToString(ptr);
         }
         this.module._free(ptr);
         return result;
-    };
+    }
     /**
      * ----- Hashing -----
      *
@@ -220,17 +218,17 @@ var S4 = /** @class */ (function () {
      * Performs a hash in one step.
      * If null is returned, check err_code/err_str for more information.
     **/
-    S4.prototype.hash_do = function (algorithm, data) {
+    hash_do(algorithm, data) {
         // S4Err HASH_DO(HASH_Algorithm algorithm,
         //               const void*    in,
         //               size_t         inlen,
         //               size_t         outLen,
         //               void*          out);
-        var num_bytes = Math.ceil(this.hash_getSizeInBits(algorithm) / 8);
+        const num_bytes = Math.ceil(this.hash_getSizeInBits(algorithm) / 8);
         if (num_bytes == 0) {
             return null;
         }
-        var ptr = this.module._malloc(num_bytes);
+        const ptr = this.module._malloc(num_bytes);
         this.err_code = this.ccall_wrapper("HASH_DO", "number", [
             ["number", algorithm],
             ["array", data],
@@ -238,64 +236,64 @@ var S4 = /** @class */ (function () {
             ["number", num_bytes],
             ["number", ptr]
         ]);
-        var result = null;
+        let result = null;
         if (this.err_code == S4Err.NoErr) {
-            result = this.util_copyBuffer(ptr, num_bytes);
+            result = this.heap_copyBuffer(ptr, num_bytes);
         }
         this.module._free(ptr);
         return result;
-    };
-    S4.prototype.hash_getSizeInBits = function (algorithm) {
-        // S4Err HASH_GetHashSize(HASH_Algorithm algorithm, size_t *hashBits);
-        var ptr = this.module._malloc(NUM_BYTES_SIZE_T);
-        this.err_code = this.ccall_wrapper("HASH_GetHashSize", "number", [
+    }
+    hash_getSizeInBits(algorithm) {
+        // S4Err HASH_GetBits(HASH_Algorithm algorithm, size_t *hashBits);
+        const ptr = this.module._malloc(NUM_BYTES_SIZE_T);
+        this.err_code = this.ccall_wrapper("HASH_GetBits", "number", [
             ["number", algorithm],
             ["number", ptr]
         ]);
-        var result = 0;
+        let result = 0;
         if (this.err_code == S4Err.NoErr) {
             result = this.module.getValue(ptr, "i32");
         }
         this.module._free(ptr);
         return result;
-    };
-    S4.prototype.hash_algorithmIsAvailable = function (algorithm) {
+    }
+    hash_algorithmIsAvailable(algorithm) {
         // bool HASH_AlgorithmIsAvailable(HASH_Algorithm algorithm);
-        var result = this.ccall_wrapper("HASH_AlgorithmIsAvailable", "number", [
+        const result = this.ccall_wrapper("HASH_AlgorithmIsAvailable", "number", [
             ["number", algorithm]
         ]);
         return result;
-    };
-    S4.prototype.hash_init = function (algorithm) {
+    }
+    hash_init(algorithm) {
         // S4Err HASH_Init(HASH_Algorithm   algorithm,
         //                 HASH_ContextRef* ctx);
-        var ptr = this.module._malloc(NUM_BYTES_POINTER);
+        const ptr = this.module._malloc(NUM_BYTES_POINTER);
         this.err_code = this.ccall_wrapper("HASH_Init", "number", [
             ["number", algorithm],
             ["number", ptr]
         ]);
-        var context = null;
+        let context = null;
         if (this.err_code == S4Err.NoErr) {
             context = this.module.getValue(ptr, "*");
         }
         this.module._free(ptr);
         return context;
-    };
-    S4.prototype.hash_getSize = function (context) {
+    }
+    hash_getSize(context) {
         // S4Err HASH_GetSize(HASH_ContextRef  ctx, size_t *hashSize);
-        var ptr = this.module._malloc(NUM_BYTES_SIZE_T);
+        const ptr = this.module._malloc(NUM_BYTES_SIZE_T);
         this.err_code = this.ccall_wrapper("HASH_GetSize", "number", [
             ["number", context],
             ["number", ptr]
         ]);
-        var result = 0;
+        let result = 0;
         if (this.err_code == S4Err.NoErr) {
             result = this.module.getValue(ptr, "i32");
         }
         this.module._free(ptr);
         return result;
-    };
-    S4.prototype.hash_update = function (context, data) {
+    }
+    hash_update(context, data) {
         // S4Err HASH_Update(HASH_ContextRef ctx, const void *data, size_t dataLength);
         this.err_code = this.ccall_wrapper("HASH_Update", "number", [
             ["number", context],
@@ -303,39 +301,39 @@ var S4 = /** @class */ (function () {
             ["number", data.byteLength]
         ]);
         return this.err_code;
-    };
-    S4.prototype.hash_final = function (context) {
+    }
+    hash_final(context) {
         // S4Err HASH_Final(HASH_ContextRef ctx,
         //                  void*           hashOut);
-        var num_bytes = this.hash_getSize(context);
+        const num_bytes = this.hash_getSize(context);
         if (num_bytes == 0) {
             return null;
         }
-        var ptr = this.module._malloc(num_bytes);
+        const ptr = this.module._malloc(num_bytes);
         this.err_code = this.ccall_wrapper("HASH_Final", "number", [
             ["number", context],
             ["number", ptr]
         ]);
-        var result = null;
+        let result = null;
         if (this.err_code == S4Err.NoErr) {
-            result = this.util_copyBuffer(ptr, num_bytes);
+            result = this.heap_copyBuffer(ptr, num_bytes);
         }
         this.module._free(ptr);
         return result;
-    };
-    S4.prototype.hash_reset = function (context) {
+    }
+    hash_reset(context) {
         // S4Err HASH_Reset(HASH_ContextRef  ctx);
         this.err_code = this.ccall_wrapper("HASH_Reset", "number", [
             ["number", context]
         ]);
         return this.err_code;
-    };
-    S4.prototype.hash_free = function (context) {
+    }
+    hash_free(context) {
         // void HASH_Free(HASH_ContextRef  ctx);
         this.ccall_wrapper("HASH_Free", null, [
             ["number", context]
         ]);
-    };
+    }
     /**
      * ----- General: Cipher -----
      *
@@ -346,76 +344,137 @@ var S4 = /** @class */ (function () {
      * For example, AES256 will return 256 bits.
      * This means the key will be: 256 / 8 = 32 bytes.
     **/
-    S4.prototype.cipher_getKeySizeInBits = function (algorithm) {
+    cipher_getKeySizeInBits(algorithm) {
         // S4Err Cipher_GetKeySize(Cipher_Algorithm algorithm, size_t *keyBits);
-        var ptr = this.module._malloc(NUM_BYTES_SIZE_T);
+        const ptr = this.module._malloc(NUM_BYTES_SIZE_T);
         this.err_code = this.ccall_wrapper("Cipher_GetKeySize", "number", [
             ["number", algorithm],
             ["number", ptr]
         ]);
-        var result = 0;
+        let result = 0;
         if (this.err_code == S4Err.NoErr) {
             result = this.module.getValue(ptr, "i32");
         }
         this.module._free(ptr);
         return result;
-    };
+    }
     /**
      * Returns the size of the block the cipher operates on (in bytes).
     **/
-    S4.prototype.cipher_getBlockSize = function (algorithm) {
+    cipher_getBlockSize(algorithm) {
         // S4Err Cipher_GetBlockSize(Cipher_Algorithm algorithm, size_t *blockSize);
-        var ptr = this.module._malloc(NUM_BYTES_SIZE_T);
+        const ptr = this.module._malloc(NUM_BYTES_SIZE_T);
         this.err_code = this.ccall_wrapper("Cipher_GetBlockSize", "number", [
             ["number", algorithm],
             ["number", ptr]
         ]);
-        var result = 0;
+        let result = 0;
         if (this.err_code == S4Err.NoErr) {
             result = this.module.getValue(ptr, "i32");
         }
         this.module._free(ptr);
         return result;
-    };
-    S4.prototype.cipher_algorithmIsAvailable = function (algorithm) {
+    }
+    cipher_algorithmIsAvailable(algorithm) {
         // bool Cipher_AlgorithmIsAvailable(Cipher_Algorithm algorithm);
-        var result = this.ccall_wrapper("Cipher_AlgorithmIsAvailable", "number", [
+        const result = this.ccall_wrapper("Cipher_AlgorithmIsAvailable", "number", [
             ["number", algorithm]
         ]);
         return result;
-    };
+    }
     /**
-     * ----- Cipher Block Chaining -----
+     * ----- Cipher Mode: Electronic Codebook (ECB) -----
+     *
+     * Note:
+     *   ECB mode is fine for encrypting a single block,
+     *   but not well-designed for encrypting multiple blocks:
+     *
+     *   https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation#Electronic_Codebook_(ECB)
     **/
-    S4.prototype.cbc_init = function (options) {
+    ecb_encrypt(options) {
+        // S4Err ECB_Encrypt(Cipher_Algorithm algorithm,
+        //                   const void*	     key,
+        //                   const void*      in,
+        //                   size_t           bytesIn,
+        //                   void*            out);
+        const { algorithm, key, input } = options;
+        const data_size = this.cipher_getBlockSize(algorithm);
+        if (data_size == null) {
+            return null;
+        }
+        const ptr_data = this.module._malloc(data_size);
+        this.err_code = this.ccall_wrapper("ECB_Encrypt", "number", [
+            ["number", algorithm],
+            ["array", key],
+            ["array", input],
+            ["number", input.byteLength],
+            ["number", ptr_data]
+        ]);
+        let result = null;
+        if (this.err_code == S4Err.NoErr) {
+            result = this.heap_copyBuffer(ptr_data, data_size);
+        }
+        this.module._free(ptr_data);
+        return result;
+    }
+    ecb_decrypt(options) {
+        // S4Err ECB_Decrypt(Cipher_Algorithm algorithm,
+        //                   const void*      key,
+        //                   const void*      in,
+        //                   size_t           bytesIn,
+        //                   void*            out);
+        const { algorithm, key, input } = options;
+        const data_size = this.cipher_getBlockSize(algorithm);
+        if (data_size == null) {
+            return null;
+        }
+        const ptr_data = this.module._malloc(data_size);
+        this.err_code = this.ccall_wrapper("ECB_Decrypt", "number", [
+            ["number", algorithm],
+            ["array", key],
+            ["array", input],
+            ["number", input.byteLength],
+            ["number", ptr_data]
+        ]);
+        let result = null;
+        if (this.err_code == S4Err.NoErr) {
+            result = this.heap_copyBuffer(ptr_data, data_size);
+        }
+        this.module._free(ptr_data);
+        return result;
+    }
+    /**
+     * ----- Cipher Mode: Cipher Block Chaining (CBC) -----
+    **/
+    cbc_init(options) {
         // S4Err CBC_Init(Cipher_Algorithm cipher,
         //                const void*      key,
         //                const void*      iv,
         //                CBC_ContextRef* ctxOut);
-        var algorithm = options.algorithm, key = options.key, iv = options.iv;
-        var ptr = this.module._malloc(NUM_BYTES_POINTER);
+        const { algorithm, key, iv } = options;
+        const ptr = this.module._malloc(NUM_BYTES_POINTER);
         this.err_code = this.ccall_wrapper("CBC_Init", "number", [
             ["number", algorithm],
             ["array", key],
             ["array", iv],
             ["number", ptr]
         ]);
-        var context = null;
+        let context = null;
         if (this.err_code == S4Err.NoErr) {
             context = this.module.getValue(ptr, "*");
         }
         this.module._free(ptr);
         return context;
-    };
-    S4.prototype.cbc_getAlgorithm = function (context) {
+    }
+    cbc_getAlgorithm(context) {
         // S4Err CBC_GetAlgorithm(CBC_ContextRef    ctx,
         //                        Cipher_Algorithm* algorithm);
-        var ptr = this.module._malloc(NUM_BYTES_POINTER);
+        const ptr = this.module._malloc(NUM_BYTES_POINTER);
         this.err_code = this.ccall_wrapper("CBC_GetAlgorithm", "number", [
             ["number", context],
             ["number", ptr]
         ]);
-        var algorithm = null;
+        let algorithm = null;
         if (this.err_code == S4Err.NoErr) {
             algorithm = this.module.getValue(ptr, "*");
         }
@@ -431,68 +490,68 @@ var S4 = /** @class */ (function () {
         else {
             return null;
         }
-    };
-    S4.prototype.cbc_encrypt = function (context, input) {
+    }
+    cbc_encrypt(context, input) {
         // S4Err CBC_Encrypt(CBC_ContextRef ctx,
         //                   const void*	   in,
         //                   size_t         bytesIn,
         //                   void*          out);
-        var algorithm = this.cbc_getAlgorithm(context);
+        const algorithm = this.cbc_getAlgorithm(context);
         if (algorithm == null) {
             return null;
         }
-        var data_size = this.cipher_getBlockSize(algorithm);
+        const data_size = this.cipher_getBlockSize(algorithm);
         if (data_size == null) {
             return null;
         }
-        var ptr_data = this.module._malloc(data_size);
+        const ptr_data = this.module._malloc(data_size);
         this.err_code = this.ccall_wrapper("CBC_Encrypt", "number", [
             ["number", context],
             ["array", input],
             ["number", input.byteLength],
             ["number", ptr_data]
         ]);
-        var result = null;
+        let result = null;
         if (this.err_code == S4Err.NoErr) {
-            result = this.util_copyBuffer(ptr_data, data_size);
+            result = this.heap_copyBuffer(ptr_data, data_size);
         }
         this.module._free(ptr_data);
         return result;
-    };
-    S4.prototype.cbc_decrypt = function (context, input) {
+    }
+    cbc_decrypt(context, input) {
         // S4Err CBC_Decrypt(CBC_ContextRef ctx,
         //                   const void*    in,
         //                   size_t         bytesIn,
         //                   void*          out);
-        var algorithm = this.cbc_getAlgorithm(context);
+        const algorithm = this.cbc_getAlgorithm(context);
         if (algorithm == null) {
             return null;
         }
-        var data_size = this.cipher_getBlockSize(algorithm);
+        const data_size = this.cipher_getBlockSize(algorithm);
         if (data_size == null) {
             return null;
         }
-        var ptr_data = this.module._malloc(data_size);
+        const ptr_data = this.module._malloc(data_size);
         this.err_code = this.ccall_wrapper("CBC_Decrypt", "number", [
             ["number", context],
             ["array", input],
             ["number", input.byteLength],
             ["number", ptr_data]
         ]);
-        var result = null;
+        let result = null;
         if (this.err_code == S4Err.NoErr) {
-            result = this.util_copyBuffer(ptr_data, data_size);
+            result = this.heap_copyBuffer(ptr_data, data_size);
         }
         this.module._free(ptr_data);
         return result;
-    };
-    S4.prototype.cbc_free = function (context) {
+    }
+    cbc_free(context) {
         // void CBC_Free(CBC_ContextRef  ctx);
         this.ccall_wrapper("CBC_Free", null, [
             ["number", context],
         ]);
-    };
-    S4.prototype.cbc_encryptPad = function (options) {
+    }
+    cbc_encryptPad(options) {
         // S4Err CBC_EncryptPAD(Cipher_Algorithm algorithm,
         //                      uint8_t*         key,
         //                      const uint8_t*   iv,
@@ -500,9 +559,9 @@ var S4 = /** @class */ (function () {
         //                      size_t           in_len,
         //                      uint8_t**        outData,
         //                      size_t*          outSize);
-        var algorithm = options.algorithm, key = options.key, iv = options.iv, input = options.input;
-        var ptr_ptr_data = this.module._malloc(NUM_BYTES_POINTER);
-        var ptr_size = this.module._malloc(NUM_BYTES_SIZE_T);
+        const { algorithm, key, iv, input } = options;
+        const ptr_ptr_data = this.module._malloc(NUM_BYTES_POINTER);
+        const ptr_size = this.module._malloc(NUM_BYTES_SIZE_T);
         this.err_code = this.ccall_wrapper("CBC_EncryptPAD", "number", [
             ["number", algorithm],
             ["array", key],
@@ -512,18 +571,18 @@ var S4 = /** @class */ (function () {
             ["number", ptr_ptr_data],
             ["number", ptr_size],
         ]);
-        var result = null;
+        let result = null;
         if (this.err_code == S4Err.NoErr) {
-            var ptr_data = this.module.getValue(ptr_ptr_data, "*");
-            var size = this.module.getValue(ptr_size, "i32");
-            result = this.util_copyBuffer(ptr_data, size);
+            const ptr_data = this.module.getValue(ptr_ptr_data, "*");
+            const size = this.module.getValue(ptr_size, "i32");
+            result = this.heap_copyBuffer(ptr_data, size);
             this.module._free(ptr_data);
         }
         this.module._free(ptr_ptr_data);
         this.module._free(ptr_size);
         return result;
-    };
-    S4.prototype.cbc_decryptPad = function (options) {
+    }
+    cbc_decryptPad(options) {
         // S4Err CBC_DecryptPAD(Cipher_Algorithm algorithm,
         //                      uint8_t*         key,
         //                      const uint8_t*   iv,
@@ -531,9 +590,9 @@ var S4 = /** @class */ (function () {
         //                      size_t           in_len,
         //                      uint8_t**        outData,
         //                      size_t*          outSize)
-        var algorithm = options.algorithm, key = options.key, iv = options.iv, input = options.input;
-        var ptr_ptr_data = this.module._malloc(NUM_BYTES_POINTER);
-        var ptr_size = this.module._malloc(NUM_BYTES_SIZE_T);
+        const { algorithm, key, iv, input } = options;
+        const ptr_ptr_data = this.module._malloc(NUM_BYTES_POINTER);
+        const ptr_size = this.module._malloc(NUM_BYTES_SIZE_T);
         this.err_code = this.ccall_wrapper("CBC_DecryptPAD", "number", [
             ["number", algorithm],
             ["array", key],
@@ -543,17 +602,17 @@ var S4 = /** @class */ (function () {
             ["number", ptr_ptr_data],
             ["number", ptr_size]
         ]);
-        var result = null;
+        let result = null;
         if (this.err_code == S4Err.NoErr) {
-            var ptr_data = this.module.getValue(ptr_ptr_data, "*");
-            var size = this.module.getValue(ptr_size, "i32");
-            result = this.util_copyBuffer(ptr_data, size);
+            const ptr_data = this.module.getValue(ptr_ptr_data, "*");
+            const size = this.module.getValue(ptr_size, "i32");
+            result = this.heap_copyBuffer(ptr_data, size);
             this.module._free(ptr_data);
         }
         this.module._free(ptr_ptr_data);
         this.module._free(ptr_size);
         return result;
-    };
+    }
     /**
      * ----- Tweakable Block Cipher -----
     **/
@@ -563,25 +622,25 @@ var S4 = /** @class */ (function () {
      * The key.byteLength should be appropriate for the given algorithm.
      * You can use cipher_getSize(algorithm) to determine the length dynamically.
     **/
-    S4.prototype.tbc_init = function (algorithm, key) {
+    tbc_init(algorithm, key) {
         // S4Err TBC_Init(Cipher_Algorithm algorithm,
         //                const void*      key,
         //                TBC_ContextRef*  ctx);
         // TODO: TBC_Init should take keyLenght parameter.
-        var ptr = this.module._malloc(NUM_BYTES_POINTER);
+        const ptr = this.module._malloc(NUM_BYTES_POINTER);
         this.err_code = this.ccall_wrapper("TBC_Init", "number", [
             ["number", algorithm],
             ["array", key],
             ["number", ptr]
         ]);
-        var context = null;
+        let context = null;
         if (this.err_code == S4Err.NoErr) {
             context = this.module.getValue(ptr, "*");
         }
         this.module._free(ptr);
         return context;
-    };
-    S4.prototype.tbc_setTweek = function (context, tweek) {
+    }
+    tbc_setTweek(context, tweek) {
         // S4Err TBC_SetTweek(TBC_ContextRef ctx,
         //                    const void*    tweek);
         this.err_code = this.ccall_wrapper("TBC_SetTweek", "number", [
@@ -589,70 +648,70 @@ var S4 = /** @class */ (function () {
             ["array", tweek],
         ]);
         return this.err_code;
-    };
-    S4.prototype.tbc_encrypt = function (context, data) {
+    }
+    tbc_encrypt(context, data) {
         // S4Err TBC_Encrypt(TBC_ContextRef ctx,
         //                   const void*    in,
         //                   void*          out);
-        var data_size = data.byteLength;
+        const data_size = data.byteLength;
         // TODO: Can I verify the data_size is correct ???
         // This looks like it would be an easy mistake to make...
-        var ptr = this.module._malloc(data_size);
+        const ptr = this.module._malloc(data_size);
         this.err_code = this.ccall_wrapper("TBC_Encrypt", "number", [
             ["number", context],
             ["array", data],
             ["number", ptr]
         ]);
-        var result = null;
+        let result = null;
         if (this.err_code == S4Err.NoErr) {
-            result = this.util_copyBuffer(ptr, data_size);
+            result = this.heap_copyBuffer(ptr, data_size);
         }
         this.module._free(ptr);
         return result;
-    };
-    S4.prototype.tbc_decrypt = function (context, data) {
+    }
+    tbc_decrypt(context, data) {
         // S4Err TBC_Decrypt(TBC_ContextRef ctx,
         //                   const void*    in,
         //                   void*          out);
-        var data_size = data.byteLength;
+        const data_size = data.byteLength;
         // TODO: Can I verify the data_size is correct ???
         // This looks like it would be an easy mistake to make...
-        var ptr = this.module._malloc(data_size);
+        const ptr = this.module._malloc(data_size);
         this.err_code = this.ccall_wrapper("TBC_Decrypt", "number", [
             ["number", context],
             ["array", data],
             ["number", ptr]
         ]);
-        var result = null;
+        let result = null;
         if (this.err_code == S4Err.NoErr) {
-            result = this.util_copyBuffer(ptr, data_size);
+            result = this.heap_copyBuffer(ptr, data_size);
         }
         this.module._free(ptr);
         return result;
-    };
-    S4.prototype.tbc_free = function (context) {
+    }
+    tbc_free(context) {
         // void TBC_Free(TBC_ContextRef  ctx);
         this.ccall_wrapper("TBC_Free", null, [
             ["number", context],
         ]);
-    };
+    }
     /**
      * ----- Elliptic-curve cryptography -----
     **/
-    S4.prototype.ecc_init = function () {
+    ecc_init() {
         // S4Err ECC_Init(ECC_ContextRef* ctx);
-        var ptr = this.module._malloc(NUM_BYTES_POINTER);
+        const ptr = this.module._malloc(NUM_BYTES_POINTER);
         this.err_code = this.ccall_wrapper("ECC_Init", "number", [
             ["number", ptr],
         ]);
-        var context = null;
+        let context = null;
         if (this.err_code == S4Err.NoErr) {
             context = this.module.getValue(ptr, "*");
         }
         this.module._free(ptr);
         return context;
-    };
-    S4.prototype.ecc_generate = function (context, keySize) {
+    }
+    ecc_generate(context, keySize) {
         // S4Err ECC_Generate(ECC_ContextRef ctx,
         //                    size_t         keysize);
         this.err_code = this.ccall_wrapper("ECC_Generate", "number", [
@@ -660,8 +719,8 @@ var S4 = /** @class */ (function () {
             ["number", keySize]
         ]);
         return this.err_code;
-    };
-    S4.prototype.ecc_import = function (context, data) {
+    }
+    ecc_import(context, data) {
         // S4Err ECC_Import(ECC_ContextRef ctx,
         //                  void*          in,
         //                  size_t         inlen);
@@ -671,16 +730,16 @@ var S4 = /** @class */ (function () {
             ["number", data.byteLength],
         ]);
         return this.err_code;
-    };
-    S4.prototype.ecc_export = function (context, includePrivateKey) {
+    }
+    ecc_export(context, includePrivateKey) {
         // S4Err ECC_Export(ECC_ContextRef ctx,
         //                  int            exportPrivate,
         //                  void*          outData,
         //                  size_t         bufSize,
         //                  size_t*        datSize);
-        var buffer_malloc_size = 1024;
-        var ptr_buffer = this.module._malloc(buffer_malloc_size);
-        var ptr_size = this.module._malloc(NUM_BYTES_SIZE_T);
+        const buffer_malloc_size = 1024;
+        const ptr_buffer = this.module._malloc(buffer_malloc_size);
+        const ptr_size = this.module._malloc(NUM_BYTES_SIZE_T);
         this.err_code = this.ccall_wrapper("ECC_Export", "number", [
             ["number", context],
             ["boolean", includePrivateKey],
@@ -688,71 +747,71 @@ var S4 = /** @class */ (function () {
             ["number", buffer_malloc_size],
             ["number", ptr_size],
         ]);
-        var result = null;
+        let result = null;
         if (this.err_code == S4Err.NoErr) {
-            var buffer_fill_size = this.module.getValue(ptr_size, "i32");
-            result = this.util_copyBuffer(ptr_buffer, buffer_fill_size);
+            const buffer_fill_size = this.module.getValue(ptr_size, "i32");
+            result = this.heap_copyBuffer(ptr_buffer, buffer_fill_size);
         }
         this.module._free(ptr_size);
         this.module._free(ptr_buffer);
         return result;
-    };
+    }
     /**
      * Returns whether or not the ECC key is a private key.
      * Generally this method is used when importing key material,
      * and you want to find ensure the imported key material is a private key,
      * as opposed to just a public key.
     **/
-    S4.prototype.ecc_isPrivate = function (context) {
+    ecc_isPrivate(context) {
         // bool ECC_isPrivate(ECC_ContextRef ctx);
-        var result = this.ccall_wrapper("ECC_isPrivate", "number", [
+        const result = this.ccall_wrapper("ECC_isPrivate", "number", [
             ["number", context],
         ]);
         return result;
-    };
-    S4.prototype.ecc_free = function (context) {
+    }
+    ecc_free(context) {
         // void ECC_Free(ECC_ContextRef ctx);
         this.ccall_wrapper("ECC_Free", null, [
             ["number", context],
         ]);
-    };
+    }
     /**
      * ----- Key Wrappers -----
     **/
-    S4.prototype.key_deserializeKey = function (key) {
+    key_deserializeKey(key) {
         // S4Err S4Key_DeserializeKey(uint8_t*         inData,
         //                            size_t           inLen,
         //                            S4KeyContextRef* ctxOut);
-        var ptr = this.module._malloc(NUM_BYTES_POINTER);
+        const ptr = this.module._malloc(NUM_BYTES_POINTER);
         this.err_code = this.ccall_wrapper("S4Key_DeserializeKey", "number", [
             ["array", key],
             ["number", key.byteLength],
             ["number", ptr]
         ]);
-        var context = null;
+        let context = null;
         if (this.err_code == S4Err.NoErr) {
             context = this.module.getValue(ptr, "*");
         }
         this.module._free(ptr);
         return context;
-    };
-    S4.prototype.key_newTBC = function (algorithm, key) {
+    }
+    key_newTBC(algorithm, key) {
         // S4Err S4Key_NewTBC(Cipher_Algorithm algorithm,
         //                    const void*      key,
         //                    S4KeyContextRef* ctx);
-        var ptr = this.module._malloc(NUM_BYTES_POINTER);
+        const ptr = this.module._malloc(NUM_BYTES_POINTER);
         this.err_code = this.ccall_wrapper("S4Key_NewTBC", "number", [
             ["number", algorithm],
             ["array", key],
             ["number", ptr]
         ]);
-        var context = null;
+        let context = null;
         if (this.err_code == S4Err.NoErr) {
             context = this.module.getValue(ptr, "*");
         }
         this.module._free(ptr);
         return context;
-    };
+    }
     /**
      * Key "wrapping" refers to the technique of taking an encryption key,
      * and encrypting it using some other technique, such as a different encryption key.
@@ -775,41 +834,41 @@ var S4 = /** @class */ (function () {
      * 	The key you want to wrap.
      * 	That is, this key will be encrypted.
     **/
-    S4.prototype.key_wrapToKey = function (context_outer, context_inner) {
+    key_wrapToKey(context_outer, context_inner) {
         // S4Err S4Key_SerializeToS4Key(S4KeyContextRef ctx,
         //                              S4KeyContextRef passKeyCtx,
         //                              uint8_t**       outData,
         //                              size_t*         outSize);
-        var ptr_ptr_data = this.module._malloc(NUM_BYTES_POINTER);
-        var ptr_size = this.module._malloc(NUM_BYTES_SIZE_T);
+        const ptr_ptr_data = this.module._malloc(NUM_BYTES_POINTER);
+        const ptr_size = this.module._malloc(NUM_BYTES_SIZE_T);
         this.err_code = this.ccall_wrapper("S4Key_SerializeToS4Key", "number", [
             ["number", context_inner],
             ["number", context_outer],
             ["number", ptr_ptr_data],
             ["number", ptr_size],
         ]);
-        var result = null;
+        let result = null;
         if (this.err_code == S4Err.NoErr) {
-            var ptr_data = this.module.getValue(ptr_ptr_data, "*");
-            var size = this.module.getValue(ptr_size, "i32");
-            result = this.util_copyBuffer(ptr_data, size);
+            const ptr_data = this.module.getValue(ptr_ptr_data, "*");
+            const size = this.module.getValue(ptr_size, "i32");
+            result = this.heap_copyBuffer(ptr_data, size);
             this.module._free(ptr_data);
         }
         this.module._free(ptr_ptr_data);
         this.module._free(ptr_size);
         return result;
-    };
-    S4.prototype.key_getProperty = function (context, property) {
+    }
+    key_getProperty(context, property) {
         // S4Err S4Key_GetProperty(S4KeyContextRef    ctx,
         //                         const char*        propName,
         //                         S4KeyPropertyType* outPropType,
         //                         void*              outData,
         //                         size_t             bufSize,
         //                         size_t*            datSize);
-        var ptr_type = this.module._malloc(NUM_BYTES_POINTER);
-        var buffer_malloc_size = 1024;
-        var ptr_data = this.module._malloc(buffer_malloc_size);
-        var ptr_size = this.module._malloc(NUM_BYTES_SIZE_T);
+        const ptr_type = this.module._malloc(NUM_BYTES_POINTER);
+        const buffer_malloc_size = 1024;
+        const ptr_data = this.module._malloc(buffer_malloc_size);
+        const ptr_size = this.module._malloc(NUM_BYTES_SIZE_T);
         this.err_code = this.ccall_wrapper("S4Key_GetProperty", "number", [
             ["number", context],
             ["string", property],
@@ -818,17 +877,17 @@ var S4 = /** @class */ (function () {
             ["number", buffer_malloc_size],
             ["number", ptr_size]
         ]);
-        var result = null;
+        let result = null;
         if (this.err_code == S4Err.NoErr) {
-            var type = this.module.getValue(ptr_type, "i32");
+            const type = this.module.getValue(ptr_type, "i32");
             switch (type) {
                 case S4PropertyType.UTF8String: {
                     result = this.module.UTF8ToString(ptr_data);
                     break;
                 }
                 case S4PropertyType.Binary: {
-                    var size = this.module.getValue(ptr_size, "i32");
-                    result = this.util_copyBuffer(ptr_data, size);
+                    const size = this.module.getValue(ptr_size, "i32");
+                    result = this.heap_copyBuffer(ptr_data, size);
                     break;
                 }
                 case S4PropertyType.Numeric: {
@@ -850,17 +909,17 @@ var S4 = /** @class */ (function () {
         this.module._free(ptr_data);
         this.module._free(ptr_size);
         return result;
-    };
-    S4.prototype.key_free = function (context) {
+    }
+    key_free(context) {
         // void S4Key_Free(S4KeyContextRef ctx);
         this.ccall_wrapper("S4Key_Free", null, [
             ["number", context]
         ]);
-    };
+    }
     /**
-     * ----- Javascript Utilities -----
+     * ----- Internal Utilities -----
     **/
-    S4.prototype.util_copyBuffer = function (ptr, num_bytes) {
+    heap_copyBuffer(ptr, num_bytes) {
         // From the docs:
         // 
         // > new TypedArray(buffer [, byteOffset [, length]]);
@@ -876,13 +935,41 @@ var S4 = /** @class */ (function () {
         // > typed array types (such as Int32Array), the typedArray gets copied into a
         // > new typed array.
         // 
-        var unsafe_not_copied = new Uint8Array(this.module.HEAPU8.buffer, ptr, num_bytes);
-        var result = new Uint8Array(unsafe_not_copied);
+        const unsafe_not_copied = new Uint8Array(this.module.HEAPU8.buffer, ptr, num_bytes);
+        const result = new Uint8Array(unsafe_not_copied);
         return result;
-    };
-    S4.prototype.util_hexString = function (buffer) {
-        return Array.prototype.map.call(buffer, function (x) { return ('00' + x.toString(16)).slice(-2); }).join('');
-    };
-    return S4;
-}());
+    }
+    /**
+     * ----- Javascript Utilities -----
+    **/
+    util_concatBuffers(buffers) {
+        const totalByteLength = buffers.reduce((total, buffer) => {
+            return (total + buffer.byteLength);
+        }, 0);
+        const result = new Uint8Array(totalByteLength);
+        let offset = 0;
+        for (const buffer of buffers) {
+            result.set(buffer, offset);
+            offset += buffer.length;
+        }
+        return result;
+    }
+    util_compareBuffers(bufferA, bufferB) {
+        if (bufferA == bufferB) {
+            return true;
+        }
+        if (bufferA.byteLength != bufferB.byteLength) {
+            return false;
+        }
+        for (let i = 0; i < bufferA.byteLength; i++) {
+            if (bufferA[i] != bufferB[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+    util_hexString(buffer) {
+        return Array.prototype.map.call(buffer, (x) => ('00' + x.toString(16)).slice(-2)).join('');
+    }
+}
 exports.S4 = S4;

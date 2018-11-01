@@ -119,7 +119,13 @@ export enum S4CipherAlgorithm
 	SharedKey     =  200,
 
 	ECC384        =  300,
-	ECC414        =  301, /*  Dan Bernstein Curve3617  */
+	ECC41417      =  301,
+};
+
+export enum S4ECCAlgorithm
+{
+	ECC384     = S4CipherAlgorithm.ECC384,
+	Curve41417 = S4CipherAlgorithm.ECC41417
 };
 
 export enum S4Property {
@@ -164,7 +170,7 @@ const NUM_BYTES_SIZE_T = (32 / 8);
 
 export class S4 {
 
-	public static load(module: S4Module): S4|null
+	public static load(module: any): S4|null
 	{
 		if (module && module._S4_Init) {
 			return new S4(module as S4Module);
@@ -357,7 +363,7 @@ export class S4 {
 		let result: Uint8Array|null = null;
 		if (this.err_code == S4Err.NoErr)
 		{
-			result = this.util_copyBuffer(ptr, num_bytes);
+			result = this.heap_copyBuffer(ptr, num_bytes);
 		}
 
 		this.module._free(ptr);
@@ -366,12 +372,12 @@ export class S4 {
 
 	public hash_getSizeInBits(algorithm: S4HashAlgorithm): number
 	{
-		// S4Err HASH_GetHashSize(HASH_Algorithm algorithm, size_t *hashBits);
+		// S4Err HASH_GetBits(HASH_Algorithm algorithm, size_t *hashBits);
 
 		const ptr = this.module._malloc(NUM_BYTES_SIZE_T);
 
 		this.err_code = this.ccall_wrapper(
-			"HASH_GetHashSize", "number", [
+			"HASH_GetBits", "number", [
 				["number", algorithm],
 				["number", ptr]
 			]
@@ -487,7 +493,7 @@ export class S4 {
 		let result: Uint8Array|null = null;
 		if (this.err_code == S4Err.NoErr)
 		{
-			result = this.util_copyBuffer(ptr, num_bytes);
+			result = this.heap_copyBuffer(ptr, num_bytes);
 		}
 
 		this.module._free(ptr);
@@ -592,7 +598,103 @@ export class S4 {
 	}
 
 	/**
-	 * ----- Cipher Block Chaining -----
+	 * ----- Cipher Mode: Electronic Codebook (ECB) -----
+	 * 
+	 * Note:
+	 *   ECB mode is fine for encrypting a single block,
+	 *   but not well-designed for encrypting multiple blocks:
+	 * 
+	 *   https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation#Electronic_Codebook_(ECB)
+	**/
+
+	public ecb_encrypt(
+		options: {
+			algorithm : S4CipherAlgorithm
+			key       : Readonly<Uint8Array>,
+			input     : Readonly<Uint8Array>
+		}
+	): Uint8Array|null
+	{
+		// S4Err ECB_Encrypt(Cipher_Algorithm algorithm,
+		//                   const void*	     key,
+		//                   const void*      in,
+		//                   size_t           bytesIn,
+		//                   void*            out);
+
+		const {algorithm, key, input} = options;
+
+		const data_size = this.cipher_getBlockSize(algorithm);
+		if (data_size == null) {
+			return null;
+		}
+
+		const ptr_data = this.module._malloc(data_size);
+
+		this.err_code = this.ccall_wrapper(
+			"ECB_Encrypt", "number", [
+				["number", algorithm],
+				["array", key],
+				["array", input],
+				["number", input.byteLength],
+				["number", ptr_data]
+			]
+		);
+
+		let result: Uint8Array|null = null;
+		if (this.err_code == S4Err.NoErr)
+		{
+			result = this.heap_copyBuffer(ptr_data, data_size);
+		}
+
+		this.module._free(ptr_data);
+		return result;
+	}
+
+	public ecb_decrypt(
+		options: {
+			algorithm : S4CipherAlgorithm
+			key       : Readonly<Uint8Array>,
+			input     : Readonly<Uint8Array>
+		}
+	):  Uint8Array|null
+	{
+		// S4Err ECB_Decrypt(Cipher_Algorithm algorithm,
+		//                   const void*      key,
+		//                   const void*      in,
+		//                   size_t           bytesIn,
+		//                   void*            out);
+
+		const {algorithm, key, input} = options;
+
+		const data_size = this.cipher_getBlockSize(algorithm);
+		if (data_size == null) {
+			return null;
+		}
+
+		const ptr_data = this.module._malloc(data_size);
+
+		this.err_code = this.ccall_wrapper(
+			"ECB_Decrypt", "number", [
+				["number", algorithm],
+				["array", key],
+				["array", input],
+				["number", input.byteLength],
+				["number", ptr_data]
+			]
+		);
+
+		let result: Uint8Array|null = null;
+		if (this.err_code == S4Err.NoErr)
+		{
+			result = this.heap_copyBuffer(ptr_data, data_size);
+		}
+
+		this.module._free(ptr_data);
+		return result;
+	}
+
+	/**
+	 * ----- Cipher Mode: Cipher Block Chaining (CBC) -----
 	**/
 
 	public cbc_init(
@@ -697,7 +799,7 @@ export class S4 {
 		let result: Uint8Array|null = null;
 		if (this.err_code == S4Err.NoErr)
 		{
-			result = this.util_copyBuffer(ptr_data, data_size);
+			result = this.heap_copyBuffer(ptr_data, data_size);
 		}
 
 		this.module._free(ptr_data);
@@ -735,7 +837,7 @@ export class S4 {
 		let result: Uint8Array|null = null;
 		if (this.err_code == S4Err.NoErr)
 		{
-			result = this.util_copyBuffer(ptr_data, data_size);
+			result = this.heap_copyBuffer(ptr_data, data_size);
 		}
 
 		this.module._free(ptr_data);
@@ -793,7 +895,7 @@ export class S4 {
 			const ptr_data = this.module.getValue(ptr_ptr_data, "*");
 			const size = this.module.getValue(ptr_size, "i32");
 
-			result = this.util_copyBuffer(ptr_data, size);
+			result = this.heap_copyBuffer(ptr_data, size);
 
 			this.module._free(ptr_data);
 		}
@@ -843,7 +945,7 @@ export class S4 {
 			const ptr_data = this.module.getValue(ptr_ptr_data, "*");
 			const size = this.module.getValue(ptr_size, "i32");
 
-			result = this.util_copyBuffer(ptr_data, size);
+			result = this.heap_copyBuffer(ptr_data, size);
 
 			this.module._free(ptr_data);
 		}
@@ -852,8 +954,6 @@ export class S4 {
 		this.module._free(ptr_size);
 		return result;
 	}
-
-
 
 	/**
 	 * ----- Tweakable Block Cipher -----
@@ -938,7 +1038,7 @@ export class S4 {
 		let result: Uint8Array|null = null;
 		if (this.err_code == S4Err.NoErr)
 		{
-			result = this.util_copyBuffer(ptr, data_size);
+			result = this.heap_copyBuffer(ptr, data_size);
 		}
 
 		this.module._free(ptr);
@@ -972,7 +1072,7 @@ export class S4 {
 		let result: Uint8Array|null = null;
 		if (this.err_code == S4Err.NoErr)
 		{
-			result = this.util_copyBuffer(ptr, data_size);
+			result = this.heap_copyBuffer(ptr, data_size);
 		}
 
 		this.module._free(ptr);
@@ -994,14 +1094,16 @@ export class S4 {
 	 * ----- Elliptic-curve cryptography -----
 	**/
 
-	public ecc_init(): number|null
+	public ecc_init(algorithm: S4ECCAlgorithm): number|null
 	{
-		// S4Err ECC_Init(ECC_ContextRef* ctx);
+		// S4Err ECC_Init(ECC_Algorithm algorithm,
+		//                ECC_ContextRef __NULLABLE_REF_POINTER ctx);
 
 		const ptr = this.module._malloc(NUM_BYTES_POINTER);
 
 		this.err_code = this.ccall_wrapper(
 			"ECC_Init", "number", [
+				["number", algorithm],
 				["number", ptr],
 			]
 		);
@@ -1016,48 +1118,39 @@ export class S4 {
 		return context;
 	}
 
-	public ecc_generate(context: number, keySize: number): S4Err
+	public ecc_import(data: Readonly<Uint8Array>): number|null
 	{
-		// S4Err ECC_Generate(ECC_ContextRef ctx,
-		//                    size_t         keysize);
+		// S4Err ECC_Import(const void*    in,
+		//                  size_t         inlen,
+		//                  ECC_ContextRef ctxOUT);
 
-		this.err_code = this.ccall_wrapper(
-			"ECC_Generate", "number", [
-				["number", context],
-				["number", keySize]
-			]
-		);
-
-		return this.err_code;
-	}
-
-	public ecc_import(
-		context : number,
-		data    : Readonly<Uint8Array>
-	): S4Err
-	{
-		// S4Err ECC_Import(ECC_ContextRef ctx,
-		//                  void*          in,
-		//                  size_t         inlen);
+		const ptr = this.module._malloc(NUM_BYTES_POINTER);
 
 		this.err_code = this.ccall_wrapper(
 			"ECC_Import", "number", [
-				["number", context],
 				["array",  data],
 				["number", data.byteLength],
+				["number", ptr]
 			]
 		);
 
-		return this.err_code;
+		let context: number|null = null;
+		if (this.err_code == S4Err.NoErr)
+		{
+			context = this.module.getValue(ptr, "*");
+		}
+
+		this.module._free(ptr);
+		return context;
 	}
 
 	public ecc_export(context: number, includePrivateKey: boolean): Uint8Array|null
 	{
-		// S4Err ECC_Export(ECC_ContextRef ctx,
-		//                  int            exportPrivate,
-		//                  void*          outData,
-		//                  size_t         bufSize,
-		//                  size_t*        datSize);
+		// S4Err ECC_Export(ECC_ContextRef  ctx,
+		//                  bool            exportPrivate,
+		//                  void*           outData,
+		//                  size_t          bufSize,
+		//                  size_t*         datSize);
 
 		const buffer_malloc_size = 1024;
 		const ptr_buffer = this.module._malloc(buffer_malloc_size);
@@ -1079,7 +1172,7 @@ export class S4 {
 		{
 			const buffer_fill_size = this.module.getValue(ptr_size, "i32");
 
-			result = this.util_copyBuffer(ptr_buffer, buffer_fill_size);
+			result = this.heap_copyBuffer(ptr_buffer, buffer_fill_size);
 		}
 
 		this.module._free(ptr_size);
@@ -1089,9 +1182,12 @@ export class S4 {
 
 	/**
 	 * Returns whether or not the ECC key is a private key.
-	 * Generally this method is used when importing key material,
-	 * and you want to find ensure the imported key material is a private key,
-	 * as opposed to just a public key.
+	 * 
+	 * All generated keys (via `ecc_init`) are private.
+	 * However, that's not the case if you use `ecc_import`.
+	 * 
+	 * So this method is useful when importing key material,
+	 * and you want to check the type of key that was imported.
 	**/
 	public ecc_isPrivate(context: number): boolean
 	{
@@ -1104,6 +1200,61 @@ export class S4 {
 		);
 
 		return result;
+	}
+
+	public ecc_encrypt(context: number, input: Readonly<Uint8Array>): Uint8Array|null
+	{
+		// S4Err ECC_Encrypt(ECC_ContextRef pubCtx,
+		//                   const void*    inData,
+		//                   size_t         inDataLen,
+		//                   void*          outData,
+		//                   size_t         bufSize,
+		//                   size_t*        outDataLen);
+
+		// TODO: How do I know how big outData should be ?
+
+		return null;
+	}
+
+	public ecc_decrypt(context: number, input: Readonly<Uint8Array>): Uint8Array|null
+	{
+		// S4Err ECC_Decrypt(ECC_ContextRef privCtx,
+		//                   const void*    inData,
+		//                   size_t         inDataLen,
+		//                   void*          outData,
+		//                   size_t         bufSize,
+		//                   size_t*        outDataLen);
+
+		// TODO: How do I know how big outData should be ?
+
+		return null;
+	}
+
+	public ecc_sign(context: number, input: Readonly<Uint8Array>): Uint8Array|null
+	{
+		// S4Err ECC_Sign(ECC_ContextRef privCtx,
+		//                void*          inData,
+		//                size_t         inDataLen,
+		//                void*          outData,
+		//                size_t         bufSize,
+		//                size_t*        outDataLen);
+
+		// TODO: How do I know how big outData should be ?
+
+		return null;
+	}
+
+	public ecc_verify(context: number, input: Readonly<Uint8Array>): Uint8Array|null
+	{
+		// S4Err ECC_Verify(ECC_ContextRef pubCtx,
+		//                  void*          sig,
+		//                  size_t         sigLen,
+		//                  void*          hash,
+		//                  size_t         hashLen);
+
+		// TODO: How do I know how big outData should be ?
+
+		return null;
 	}
 
 	public ecc_free(context: number): void
@@ -1223,7 +1374,7 @@ export class S4 {
 			const ptr_data = this.module.getValue(ptr_ptr_data, "*");
 			const size = this.module.getValue(ptr_size, "i32");
 
-			result = this.util_copyBuffer(ptr_data, size);
+			result = this.heap_copyBuffer(ptr_data, size);
 
 			this.module._free(ptr_data);
 		}
@@ -1272,7 +1423,7 @@ export class S4 {
 				}
 				case S4PropertyType.Binary: {
 					const size = this.module.getValue(ptr_size, "i32");
-					result = this.util_copyBuffer(ptr_data, size);
+					result = this.heap_copyBuffer(ptr_data, size);
 					break;
 				}
 				case S4PropertyType.Numeric: {
@@ -1310,10 +1461,10 @@ export class S4 {
 	}
 
 	/**
-	 * ----- Javascript Utilities -----
+	 * ----- Internal Utilities -----
 	**/
 
-	private util_copyBuffer(ptr: number, num_bytes: number): Uint8Array
+	private heap_copyBuffer(ptr: number, num_bytes: number): Uint8Array
 	{
 		// From the docs:
 		// 
@@ -1334,6 +1485,48 @@ export class S4 {
 		const result = new Uint8Array(unsafe_not_copied);
 
 		return result;
+	}
+
+	/**
+	 * ----- Javascript Utilities -----
+	**/
+
+	public util_concatBuffers(buffers: Array<Readonly<Uint8Array>>): Uint8Array
+	{
+		const totalByteLength = buffers.reduce<number>((total, buffer)=> {
+			return (total + buffer.byteLength);
+		}, 0);
+	
+		const result = new Uint8Array(totalByteLength);
+		let offset = 0;
+	
+		for (const buffer of buffers)
+		{
+			result.set(buffer, offset);
+			offset += buffer.length;
+		}
+	
+		return result;
+	}
+
+	public util_compareBuffers(bufferA: Readonly<Uint8Array>, bufferB: Readonly<Uint8Array>): boolean
+	{
+		if (bufferA == bufferB) {
+			return true;
+		}
+
+		if (bufferA.byteLength != bufferB.byteLength) {
+			return false;
+		}
+
+		for (let i = 0; i < bufferA.byteLength; i++)
+		{
+			if (bufferA[i] != bufferB[i]) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	public util_hexString(buffer: Readonly<Uint8Array>): string

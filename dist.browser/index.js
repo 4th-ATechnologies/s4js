@@ -2,7 +2,6 @@
  * This is a wrapper for the S4 encryption library:
  * https://github.com/4th-ATechnologies/S4
  *
- *
  * ---- IMPORTANT -----
  *
  * This code was written in Typescript, and compiled to Javascript.
@@ -80,7 +79,7 @@ export var S4CipherAlgorithm;
     S4CipherAlgorithm[S4CipherAlgorithm["THREEFISH1024"] = 103] = "THREEFISH1024";
     S4CipherAlgorithm[S4CipherAlgorithm["SharedKey"] = 200] = "SharedKey";
     S4CipherAlgorithm[S4CipherAlgorithm["ECC384"] = 300] = "ECC384";
-    S4CipherAlgorithm[S4CipherAlgorithm["ECC414"] = 301] = "ECC414";
+    S4CipherAlgorithm[S4CipherAlgorithm["ECC41417"] = 301] = "ECC41417";
 })(S4CipherAlgorithm || (S4CipherAlgorithm = {}));
 ;
 export var S4Property;
@@ -238,15 +237,15 @@ var S4 = /** @class */ (function () {
         ]);
         var result = null;
         if (this.err_code == S4Err.NoErr) {
-            result = this.util_copyBuffer(ptr, num_bytes);
+            result = this.heap_copyBuffer(ptr, num_bytes);
         }
         this.module._free(ptr);
         return result;
     };
     S4.prototype.hash_getSizeInBits = function (algorithm) {
-        // S4Err HASH_GetHashSize(HASH_Algorithm algorithm, size_t *hashBits);
+        // S4Err HASH_GetBits(HASH_Algorithm algorithm, size_t *hashBits);
         var ptr = this.module._malloc(NUM_BYTES_SIZE_T);
-        this.err_code = this.ccall_wrapper("HASH_GetHashSize", "number", [
+        this.err_code = this.ccall_wrapper("HASH_GetBits", "number", [
             ["number", algorithm],
             ["number", ptr]
         ]);
@@ -316,7 +315,7 @@ var S4 = /** @class */ (function () {
         ]);
         var result = null;
         if (this.err_code == S4Err.NoErr) {
-            result = this.util_copyBuffer(ptr, num_bytes);
+            result = this.heap_copyBuffer(ptr, num_bytes);
         }
         this.module._free(ptr);
         return result;
@@ -383,7 +382,68 @@ var S4 = /** @class */ (function () {
         return result;
     };
     /**
-     * ----- Cipher Block Chaining -----
+     * ----- Cipher Mode: Electronic Codebook (ECB) -----
+     *
+     * Note:
+     *   ECB mode is fine for encrypting a single block,
+     *   but not well-designed for encrypting multiple blocks:
+     *
+     *   https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation#Electronic_Codebook_(ECB)
+    **/
+    S4.prototype.ecb_encrypt = function (options) {
+        // S4Err ECB_Encrypt(Cipher_Algorithm algorithm,
+        //                   const void*	     key,
+        //                   const void*      in,
+        //                   size_t           bytesIn,
+        //                   void*            out);
+        var algorithm = options.algorithm, key = options.key, input = options.input;
+        var data_size = this.cipher_getBlockSize(algorithm);
+        if (data_size == null) {
+            return null;
+        }
+        var ptr_data = this.module._malloc(data_size);
+        this.err_code = this.ccall_wrapper("ECB_Encrypt", "number", [
+            ["number", algorithm],
+            ["array", key],
+            ["array", input],
+            ["number", input.byteLength],
+            ["number", ptr_data]
+        ]);
+        var result = null;
+        if (this.err_code == S4Err.NoErr) {
+            result = this.heap_copyBuffer(ptr_data, data_size);
+        }
+        this.module._free(ptr_data);
+        return result;
+    };
+    S4.prototype.ecb_decrypt = function (options) {
+        // S4Err ECB_Decrypt(Cipher_Algorithm algorithm,
+        //                   const void*      key,
+        //                   const void*      in,
+        //                   size_t           bytesIn,
+        //                   void*            out);
+        var algorithm = options.algorithm, key = options.key, input = options.input;
+        var data_size = this.cipher_getBlockSize(algorithm);
+        if (data_size == null) {
+            return null;
+        }
+        var ptr_data = this.module._malloc(data_size);
+        this.err_code = this.ccall_wrapper("ECB_Decrypt", "number", [
+            ["number", algorithm],
+            ["array", key],
+            ["array", input],
+            ["number", input.byteLength],
+            ["number", ptr_data]
+        ]);
+        var result = null;
+        if (this.err_code == S4Err.NoErr) {
+            result = this.heap_copyBuffer(ptr_data, data_size);
+        }
+        this.module._free(ptr_data);
+        return result;
+    };
+    /**
+     * ----- Cipher Mode: Cipher Block Chaining (CBC) -----
     **/
     S4.prototype.cbc_init = function (options) {
         // S4Err CBC_Init(Cipher_Algorithm cipher,
@@ -452,7 +512,7 @@ var S4 = /** @class */ (function () {
         ]);
         var result = null;
         if (this.err_code == S4Err.NoErr) {
-            result = this.util_copyBuffer(ptr_data, data_size);
+            result = this.heap_copyBuffer(ptr_data, data_size);
         }
         this.module._free(ptr_data);
         return result;
@@ -479,7 +539,7 @@ var S4 = /** @class */ (function () {
         ]);
         var result = null;
         if (this.err_code == S4Err.NoErr) {
-            result = this.util_copyBuffer(ptr_data, data_size);
+            result = this.heap_copyBuffer(ptr_data, data_size);
         }
         this.module._free(ptr_data);
         return result;
@@ -514,7 +574,7 @@ var S4 = /** @class */ (function () {
         if (this.err_code == S4Err.NoErr) {
             var ptr_data = this.module.getValue(ptr_ptr_data, "*");
             var size = this.module.getValue(ptr_size, "i32");
-            result = this.util_copyBuffer(ptr_data, size);
+            result = this.heap_copyBuffer(ptr_data, size);
             this.module._free(ptr_data);
         }
         this.module._free(ptr_ptr_data);
@@ -545,7 +605,7 @@ var S4 = /** @class */ (function () {
         if (this.err_code == S4Err.NoErr) {
             var ptr_data = this.module.getValue(ptr_ptr_data, "*");
             var size = this.module.getValue(ptr_size, "i32");
-            result = this.util_copyBuffer(ptr_data, size);
+            result = this.heap_copyBuffer(ptr_data, size);
             this.module._free(ptr_data);
         }
         this.module._free(ptr_ptr_data);
@@ -603,7 +663,7 @@ var S4 = /** @class */ (function () {
         ]);
         var result = null;
         if (this.err_code == S4Err.NoErr) {
-            result = this.util_copyBuffer(ptr, data_size);
+            result = this.heap_copyBuffer(ptr, data_size);
         }
         this.module._free(ptr);
         return result;
@@ -623,7 +683,7 @@ var S4 = /** @class */ (function () {
         ]);
         var result = null;
         if (this.err_code == S4Err.NoErr) {
-            result = this.util_copyBuffer(ptr, data_size);
+            result = this.heap_copyBuffer(ptr, data_size);
         }
         this.module._free(ptr);
         return result;
@@ -689,7 +749,7 @@ var S4 = /** @class */ (function () {
         var result = null;
         if (this.err_code == S4Err.NoErr) {
             var buffer_fill_size = this.module.getValue(ptr_size, "i32");
-            result = this.util_copyBuffer(ptr_buffer, buffer_fill_size);
+            result = this.heap_copyBuffer(ptr_buffer, buffer_fill_size);
         }
         this.module._free(ptr_size);
         this.module._free(ptr_buffer);
@@ -790,7 +850,7 @@ var S4 = /** @class */ (function () {
         if (this.err_code == S4Err.NoErr) {
             var ptr_data = this.module.getValue(ptr_ptr_data, "*");
             var size = this.module.getValue(ptr_size, "i32");
-            result = this.util_copyBuffer(ptr_data, size);
+            result = this.heap_copyBuffer(ptr_data, size);
             this.module._free(ptr_data);
         }
         this.module._free(ptr_ptr_data);
@@ -826,7 +886,7 @@ var S4 = /** @class */ (function () {
                 }
                 case S4PropertyType.Binary: {
                     var size = this.module.getValue(ptr_size, "i32");
-                    result = this.util_copyBuffer(ptr_data, size);
+                    result = this.heap_copyBuffer(ptr_data, size);
                     break;
                 }
                 case S4PropertyType.Numeric: {
@@ -856,9 +916,9 @@ var S4 = /** @class */ (function () {
         ]);
     };
     /**
-     * ----- Javascript Utilities -----
+     * ----- Internal Utilities -----
     **/
-    S4.prototype.util_copyBuffer = function (ptr, num_bytes) {
+    S4.prototype.heap_copyBuffer = function (ptr, num_bytes) {
         // From the docs:
         // 
         // > new TypedArray(buffer [, byteOffset [, length]]);
@@ -877,6 +937,36 @@ var S4 = /** @class */ (function () {
         var unsafe_not_copied = new Uint8Array(this.module.HEAPU8.buffer, ptr, num_bytes);
         var result = new Uint8Array(unsafe_not_copied);
         return result;
+    };
+    /**
+     * ----- Javascript Utilities -----
+    **/
+    S4.prototype.util_concatBuffers = function (buffers) {
+        var totalByteLength = buffers.reduce(function (total, buffer) {
+            return (total + buffer.byteLength);
+        }, 0);
+        var result = new Uint8Array(totalByteLength);
+        var offset = 0;
+        for (var _i = 0, buffers_1 = buffers; _i < buffers_1.length; _i++) {
+            var buffer = buffers_1[_i];
+            result.set(buffer, offset);
+            offset += buffer.length;
+        }
+        return result;
+    };
+    S4.prototype.util_compareBuffers = function (bufferA, bufferB) {
+        if (bufferA == bufferB) {
+            return true;
+        }
+        if (bufferA.byteLength != bufferB.byteLength) {
+            return false;
+        }
+        for (var i = 0; i < bufferA.byteLength; i++) {
+            if (bufferA[i] != bufferB[i]) {
+                return false;
+            }
+        }
+        return true;
     };
     S4.prototype.util_hexString = function (buffer) {
         return Array.prototype.map.call(buffer, function (x) { return ('00' + x.toString(16)).slice(-2); }).join('');

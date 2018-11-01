@@ -4,8 +4,10 @@ import * as _ from 'lodash';
 
 import {
 	S4,
+	S4Err,
 	S4HashAlgorithm,
-	S4Err
+	S4CipherAlgorithm,
+	S4Module
 } from '../dist/index'
 
 /**
@@ -40,7 +42,7 @@ function loadS4(
 	}
 
 	interface S4Global {
-		onModuleS4Initialized: Array<() => void>
+		onModuleS4Initialized: Array<() => void>,
 		ModuleS4: {
 			isRuntimeInitialized: boolean,
 			onRuntimeInitialized: ()=>void,
@@ -320,6 +322,397 @@ describe('hash_stream', ()=> {
 				s4.hash_free(context);
 			}
 		
+			done();
+		});
+	});
+});
+
+describe('cipher_ebc', ()=> {
+
+	it('callback', (done)=> {
+
+		loadS4((err, s4)=> {
+
+			expect(err).to.be.null;
+			expect(s4).to.be.not.null;
+
+			s4 = s4!;
+
+			interface ECBTestSuite  {
+				algorithm   : S4CipherAlgorithm,
+				plaintext   : Uint8Array,
+				key         : string,
+				knownAnswer : string	
+			};
+
+			const plaintext = new Uint8Array(512);
+			for (let i = 0; i < plaintext.byteLength; i++)
+			{
+				plaintext[i] = (i % 256);
+			}
+
+			const testSuite: ECBTestSuite[] = [
+				{
+					algorithm   : S4CipherAlgorithm.AES128,
+					plaintext   : new Uint8Array(plaintext.buffer, 0, 64),
+					key         : "00010203050607080A0B0C0D0F101112",
+					knownAnswer : "c7b13e86a216e29c522a5d1297e56c491df90cd4733abc6986664e11f31a54d247c2e00edb0a543b010e45974d9e310835185cf30786aca47e3b603053d03f1c"
+				},
+				{
+					algorithm   : S4CipherAlgorithm.AES192,
+					plaintext   : new Uint8Array(plaintext.buffer, 0, 64),
+					key         : "00010203050607080A0B0C0D0F10111214151617191A1B1C",
+					knownAnswer : "114098780a5cdab5ece2240473293cfa9efa77a03644de99e571a5b5806ec0910fd9514d6e4323827a51d8d9f73db7a554352e6d4f89fee59b9d33ffde68e67f"
+				},
+				{
+					algorithm   : S4CipherAlgorithm.AES256,
+					plaintext   : new Uint8Array(plaintext.buffer, 0, 64),
+					key         : "00010203050607080A0B0C0D0F10111214151617191A1B1C1E1F202123242526",
+					knownAnswer : "dad2a9132f24f99793fe81104ad58a63a91a1f49b99cd8370a5ca9ae55cb17ee01a8da61410bcaaada5ddffd8beac7090d221fef3f031602fa87f04773de77d4"
+				},
+				{
+					algorithm   : S4CipherAlgorithm.TWOFISH256,
+					plaintext   : new Uint8Array(plaintext.buffer, 0, 64),
+					key         : "00010203050607080A0B0C0D0F10111214151617191A1B1C1E1F202123242526",
+					knownAnswer : "28890111126d6513b0a433fc42ddb60052383b30e56b8178c95b6041c26765482ca6b484c765eb85f1e5730741095643ecc2e1d78a7f3acbd5e74734010e76e8"
+				}
+			];
+
+			for (const test of testSuite)
+			{
+				const block_size = s4.cipher_getBlockSize(test.algorithm);
+				expect(block_size).to.be.not.null;
+				expect(block_size).to.be.greaterThan(0);
+
+				let encrypted: Uint8Array;
+
+				{ // Test encryption
+
+					const encrypted_blocks: Uint8Array[] = [];
+					let offset = 0;
+
+					while (offset < test.plaintext.byteLength)
+					{
+						expect(offset + block_size).to.be.lte(test.plaintext.byteLength);
+
+						const plaintext_block = test.plaintext.slice(offset, offset+block_size);
+						const encrypted_block = s4.ecb_encrypt({
+							algorithm : test.algorithm,
+							key       : new Uint8Array(Buffer.from(test.key, 'hex')),
+							input     : plaintext_block
+						});
+
+						expect(encrypted_block).to.be.not.null;
+						if (encrypted_block) {
+							encrypted_blocks.push(encrypted_block);
+						}
+
+						offset += block_size;
+					}
+
+					encrypted = s4.util_concatBuffers(encrypted_blocks);
+					const expected = new Uint8Array(Buffer.from(test.knownAnswer, 'hex'));
+
+					console.log(`- ${_.padStart(S4CipherAlgorithm[test.algorithm], 8)}: ${s4.util_hexString(encrypted)}`);
+
+					const encryption_match = s4.util_compareBuffers(encrypted, expected);
+					expect(encryption_match).to.be.true;
+				}
+				
+				{ // Test decryption
+
+					const decrypted_blocks: Uint8Array[] = [];
+					let offset = 0;
+
+					while (offset < encrypted.byteLength)
+					{
+						expect(offset + block_size).to.be.lte(encrypted.byteLength);
+
+						const encrypted_block = encrypted.slice(offset, offset+block_size);
+						const decrypted_block = s4.ecb_decrypt({
+							algorithm : test.algorithm,
+							key       : new Uint8Array(Buffer.from(test.key, 'hex')),
+							input     : encrypted_block
+						});
+
+						expect(decrypted_block).to.be.not.null;
+						if (decrypted_block) {
+							decrypted_blocks.push(decrypted_block);
+						}
+
+						offset += block_size;
+					}
+
+					const decrypted = s4.util_concatBuffers(decrypted_blocks);
+
+					const decryption_match = s4.util_compareBuffers(decrypted, test.plaintext);
+					expect(decryption_match).to.be.true;
+				}
+			}
+
+			done();
+		});
+	});
+});
+
+describe('cipher_cbc', ()=> {
+
+	it('callback', (done)=> {
+	
+		loadS4((err, s4)=> {
+
+			expect(err).to.be.null;
+			expect(s4).to.be.not.null;
+
+			s4 = s4!;
+			
+			interface CBCTestSuite  {
+				algorithm   : S4CipherAlgorithm,
+				plaintext   : Uint8Array,
+				key         : string,
+				iv          : string,
+				knownAnswer : string	
+			};
+
+			const plaintext = new Uint8Array(512);
+			for (let i = 0; i < plaintext.byteLength; i++)
+			{
+				plaintext[i] = (i % 256);
+			}
+
+			const iv = "0A0B0C0D0F10111214151617191A1B1C";
+
+			const testSuite: CBCTestSuite[] = [
+				{
+					algorithm   : S4CipherAlgorithm.AES128,
+					plaintext   : new Uint8Array(plaintext.buffer, 0, 64),
+					key         : "00010203050607080A0B0C0D0F101112",
+					iv          : iv,
+					knownAnswer : "7e0cd07e6dd9b85abaf7663ca6b2e4366e8c2fcf57d577ba75a8b44d2340a788163022487d70d29f21ac797f83503625a7d9f9dd74e5c06cc6250d8f5dd0dec6"
+				},
+				{
+					algorithm   : S4CipherAlgorithm.AES192,
+					plaintext   : new Uint8Array(plaintext.buffer, 0, 64),
+					key         : "00010203050607080A0B0C0D0F10111214151617191A1B1C",
+					iv          : iv,
+					knownAnswer : "b866d6ca74feb44e2a51faf383fe09b9c5638bec5d5cc15e65899e9f1f9485b16ad7511b3569fe097324d4a49d5ff5847e2a474e397a35a895b3311b81cab15c"
+				},
+				{
+					algorithm   : S4CipherAlgorithm.AES256,
+					plaintext   : new Uint8Array(plaintext.buffer, 0, 64),
+					key         : "00010203050607080A0B0C0D0F10111214151617191A1B1C1E1F202123242526",
+					iv          : iv,
+					knownAnswer : "2c9391a6c1221be66f494b07181797d99f52aca2994c259e3e3ea5a111a4e78489a01a5cff12f539c0a68d4f306a2f1e87ec63527df7864028a189bd1db5c300"
+				},
+				{
+					algorithm   : S4CipherAlgorithm.TWOFISH256,
+					plaintext   : new Uint8Array(plaintext.buffer, 0, 64),
+					key         : "00010203050607080A0B0C0D0F10111214151617191A1B1C1E1F202123242526",
+					iv          : iv,
+					knownAnswer : "87f31157d34886a88184dcaf185a6a86bb8aeabc7afc59aa89a772ce32d6464da38b6848735f3f49bc0e9dbd12ba0c35b98c3f2e7f03ab00300803b8623efd9d"
+				}
+			];
+
+			for (const test of testSuite)
+			{
+				const block_size = s4.cipher_getBlockSize(test.algorithm);
+				expect(block_size).to.be.not.null;
+				expect(block_size).to.be.greaterThan(0);
+
+				let encrypted: Uint8Array;
+
+				{ // Test encryption
+
+					const context = s4.cbc_init({
+						algorithm : test.algorithm,
+						key       : new Uint8Array(Buffer.from(test.key, 'hex')),
+						iv        : new Uint8Array(Buffer.from(test.iv, 'hex'))
+					})!;
+					expect(context).to.be.not.null;
+
+					const encrypted_blocks: Uint8Array[] = [];
+					let offset = 0;
+
+					while (offset < test.plaintext.byteLength)
+					{
+						expect(offset + block_size).to.be.lte(test.plaintext.byteLength);
+
+						const plaintext_block = test.plaintext.slice(offset, offset+block_size);
+						const encrypted_block = s4.cbc_encrypt(context, plaintext_block);
+
+						expect(encrypted_block).to.be.not.null;
+						if (encrypted_block) {
+							encrypted_blocks.push(encrypted_block);
+						}
+
+						offset += block_size;
+					}
+
+					encrypted = s4.util_concatBuffers(encrypted_blocks);
+					const expected = new Uint8Array(Buffer.from(test.knownAnswer, 'hex'));
+
+					console.log(`- ${_.padStart(S4CipherAlgorithm[test.algorithm], 10)}: ${s4.util_hexString(encrypted)}`);
+
+					const encryption_match = s4.util_compareBuffers(encrypted, expected);
+					expect(encryption_match).to.be.true;
+
+					s4.cbc_free(context);
+				}
+				
+				{ // Test decryption
+
+					const context = s4.cbc_init({
+						algorithm : test.algorithm,
+						key       : new Uint8Array(Buffer.from(test.key, 'hex')),
+						iv        : new Uint8Array(Buffer.from(test.iv, 'hex'))
+					})!;
+					expect(context).to.be.not.null;
+
+					const decrypted_blocks: Uint8Array[] = [];
+					let offset = 0;
+
+					while (offset < encrypted.byteLength)
+					{
+						expect(offset + block_size).to.be.lte(encrypted.byteLength);
+
+						const encrypted_block = encrypted.slice(offset, offset+block_size);
+						const decrypted_block = s4.cbc_decrypt(context, encrypted_block);
+
+						expect(decrypted_block).to.be.not.null;
+						if (decrypted_block) {
+							decrypted_blocks.push(decrypted_block);
+						}
+
+						offset += block_size;
+					}
+
+					const decrypted = s4.util_concatBuffers(decrypted_blocks);
+
+					const decryption_match = s4.util_compareBuffers(decrypted, test.plaintext);
+					expect(decryption_match).to.be.true;
+
+					s4.cbc_free(context);
+				}
+			}
+
+			done();
+		});
+	});
+});
+
+describe('cipher_cbc_pad', ()=> {
+
+	it('callback', (done)=> {
+	
+		loadS4((err, s4)=> {
+
+			expect(err).to.be.null;
+			expect(s4).to.be.not.null;
+
+			s4 = s4!;
+
+			interface CBCPadTestSuite  {
+				algorithm   : S4CipherAlgorithm,
+				plaintext   : Uint8Array,
+				key         : string,
+				iv          : string,
+				knownAnswer : string	
+			};
+
+			const plaintext = new Uint8Array(512);
+			for (let i = 0; i < plaintext.byteLength; i++)
+			{
+				plaintext[i] = (i % 256);
+			}
+
+			const iv = "0A0B0C0D0F10111214151617191A1B1C";
+
+			const testSuite: CBCPadTestSuite[] = [
+				{
+					algorithm   : S4CipherAlgorithm.AES128,
+					plaintext   : new Uint8Array(plaintext.buffer, 0, 64),
+					key         : "00010203050607080A0B0C0D0F101112",
+					iv          : iv,
+					knownAnswer : "7e0cd07e6dd9b85abaf7663ca6b2e4366e8c2fcf57d577ba75a8b44d2340a788163022487d70d29f21ac797f83503625a7d9f9dd74e5c06cc6250d8f5dd0dec6F4CA0FFCE51AAFF19CD6CA5FA4340CD8"
+				},
+			];
+
+			for (const test of testSuite)
+			{
+				const block_size = s4.cipher_getBlockSize(test.algorithm);
+				expect(block_size).to.be.not.null;
+				expect(block_size).to.be.greaterThan(0);
+
+				let encrypted: Uint8Array;
+
+				{ // Test encryption
+
+					const encrypted_blocks: Uint8Array[] = [];
+					let offset = 0;
+
+					while (offset < test.plaintext.byteLength)
+					{
+						expect(offset + block_size).to.be.lte(test.plaintext.byteLength);
+
+						const plaintext_block = test.plaintext.slice(offset, offset+block_size);
+						const encrypted_block = s4.cbc_encryptPad({
+							algorithm : test.algorithm,
+							key       : new Uint8Array(Buffer.from(test.key, 'hex')),
+							iv        : new Uint8Array(Buffer.from(test.iv, 'hex')),
+							input     : plaintext_block
+						});
+
+						expect(encrypted_block).to.be.not.null;
+						if (encrypted_block) {
+							encrypted_blocks.push(encrypted_block);
+						}
+
+						offset += block_size;
+					}
+
+					encrypted = s4.util_concatBuffers(encrypted_blocks);
+					const expected = new Uint8Array(Buffer.from(test.knownAnswer, 'hex'));
+
+					console.log(`- ${_.padStart(S4CipherAlgorithm[test.algorithm], 10)}: ${s4.util_hexString(encrypted)}`);
+					console.log(`- ${_.padStart("expected", 10)}: ${s4.util_hexString(expected)}`);
+
+				//	const encryption_match = s4.util_compareBuffers(encrypted, expected);
+				//	expect(encryption_match).to.be.true;
+				}
+				/*
+				{ // Test decryption
+
+					const decrypted_blocks: Uint8Array[] = [];
+					let offset = 0;
+
+					while (offset < encrypted.byteLength)
+					{
+						expect(offset + block_size).to.be.lte(encrypted.byteLength);
+
+						const encrypted_block = encrypted.slice(offset, offset+block_size);
+						const decrypted_block = s4.cbc_decryptPad({
+							algorithm : test.algorithm,
+							key       : new Uint8Array(Buffer.from(test.key, 'hex')),
+							iv        : new Uint8Array(Buffer.from(test.iv, 'hex')),
+							input     : encrypted_block
+						});
+
+						expect(decrypted_block).to.be.not.null;
+						if (decrypted_block) {
+							decrypted_blocks.push(decrypted_block);
+						}
+
+						offset += block_size;
+					}
+
+					const decrypted = s4.util_concatBuffers(decrypted_blocks);
+
+					const decryption_match = s4.util_compareBuffers(decrypted, test.plaintext);
+					expect(decryption_match).to.be.true;
+				}
+				*/
+			}
+
 			done();
 		});
 	});
