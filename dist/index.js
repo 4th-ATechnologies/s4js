@@ -84,6 +84,12 @@ var S4CipherAlgorithm;
     S4CipherAlgorithm[S4CipherAlgorithm["ECC41417"] = 301] = "ECC41417";
 })(S4CipherAlgorithm = exports.S4CipherAlgorithm || (exports.S4CipherAlgorithm = {}));
 ;
+var S4ECCAlgorithm;
+(function (S4ECCAlgorithm) {
+    S4ECCAlgorithm[S4ECCAlgorithm["ECC384"] = 300] = "ECC384";
+    S4ECCAlgorithm[S4ECCAlgorithm["Curve41417"] = 301] = "Curve41417";
+})(S4ECCAlgorithm = exports.S4ECCAlgorithm || (exports.S4ECCAlgorithm = {}));
+;
 var S4Property;
 (function (S4Property) {
     S4Property["KeyType"] = "keyType";
@@ -397,11 +403,16 @@ class S4 {
         //                   const void*      in,
         //                   size_t           bytesIn,
         //                   void*            out);
+        // 
+        // Notes:
+        // - ECB_Encrypt will encrypt multiple blocks.
+        //   For example, if the block size is 16 bytes (128 bits),
+        //   you can pass in 32 bytes, and it will encrypt 2 blocks.
+        // 
+        // - The input must be a multiple of the blockSize,
+        //   or S4 will return an error.
         const { algorithm, key, input } = options;
-        const data_size = this.cipher_getBlockSize(algorithm);
-        if (data_size == null) {
-            return null;
-        }
+        const data_size = input.byteLength;
         const ptr_data = this.module._malloc(data_size);
         this.err_code = this.ccall_wrapper("ECB_Encrypt", "number", [
             ["number", algorithm],
@@ -423,11 +434,16 @@ class S4 {
         //                   const void*      in,
         //                   size_t           bytesIn,
         //                   void*            out);
+        // 
+        // Notes:
+        // - ECB_Decrypt will decrypt multiple blocks.
+        //   For example, if the block size is 16 bytes (128 bits),
+        //   you can pass in 32 bytes, and it will decrypt 2 blocks.
+        // 
+        // - The input must be a multiple of the blockSize,
+        //   or S4 will return an error.
         const { algorithm, key, input } = options;
-        const data_size = this.cipher_getBlockSize(algorithm);
-        if (data_size == null) {
-            return null;
-        }
+        const data_size = input.byteLength;
         const ptr_data = this.module._malloc(data_size);
         this.err_code = this.ccall_wrapper("ECB_Decrypt", "number", [
             ["number", algorithm],
@@ -496,14 +512,15 @@ class S4 {
         //                   const void*	   in,
         //                   size_t         bytesIn,
         //                   void*          out);
-        const algorithm = this.cbc_getAlgorithm(context);
-        if (algorithm == null) {
-            return null;
-        }
-        const data_size = this.cipher_getBlockSize(algorithm);
-        if (data_size == null) {
-            return null;
-        }
+        // 
+        // Notes:
+        // - CBC_Encrypt will encrypt multiple blocks.
+        //   For example, if the block size is 16 bytes (128 bits),
+        //   you can pass in 32 bytes, and it will encrypt 2 blocks.
+        // 
+        // - The input must be a multiple of the blockSize,
+        //   or S4 will return an error.
+        const data_size = input.byteLength;
         const ptr_data = this.module._malloc(data_size);
         this.err_code = this.ccall_wrapper("CBC_Encrypt", "number", [
             ["number", context],
@@ -523,14 +540,15 @@ class S4 {
         //                   const void*    in,
         //                   size_t         bytesIn,
         //                   void*          out);
-        const algorithm = this.cbc_getAlgorithm(context);
-        if (algorithm == null) {
-            return null;
-        }
-        const data_size = this.cipher_getBlockSize(algorithm);
-        if (data_size == null) {
-            return null;
-        }
+        // 
+        // Notes:
+        // - CBC_Decrypt will decrypt multiple blocks.
+        //   For example, if the block size is 16 bytes (128 bits),
+        //   you can pass in 32 bytes, and it will decrypt 2 blocks.
+        // 
+        // - The input must be a multiple of the blockSize,
+        //   or S4 will return an error.
+        const data_size = input.byteLength;
         const ptr_data = this.module._malloc(data_size);
         this.err_code = this.ccall_wrapper("CBC_Decrypt", "number", [
             ["number", context],
@@ -698,10 +716,12 @@ class S4 {
     /**
      * ----- Elliptic-curve cryptography -----
     **/
-    ecc_init() {
-        // S4Err ECC_Init(ECC_ContextRef* ctx);
+    ecc_init(algorithm) {
+        // S4Err ECC_Init(ECC_Algorithm algorithm,
+        //                ECC_ContextRef __NULLABLE_REF_POINTER ctx);
         const ptr = this.module._malloc(NUM_BYTES_POINTER);
         this.err_code = this.ccall_wrapper("ECC_Init", "number", [
+            ["number", algorithm],
             ["number", ptr],
         ]);
         let context = null;
@@ -711,32 +731,29 @@ class S4 {
         this.module._free(ptr);
         return context;
     }
-    ecc_generate(context, keySize) {
-        // S4Err ECC_Generate(ECC_ContextRef ctx,
-        //                    size_t         keysize);
-        this.err_code = this.ccall_wrapper("ECC_Generate", "number", [
-            ["number", context],
-            ["number", keySize]
-        ]);
-        return this.err_code;
-    }
-    ecc_import(context, data) {
-        // S4Err ECC_Import(ECC_ContextRef ctx,
-        //                  void*          in,
-        //                  size_t         inlen);
+    ecc_import(data) {
+        // S4Err ECC_Import(const void*    in,
+        //                  size_t         inlen,
+        //                  ECC_ContextRef ctxOUT);
+        const ptr = this.module._malloc(NUM_BYTES_POINTER);
         this.err_code = this.ccall_wrapper("ECC_Import", "number", [
-            ["number", context],
             ["array", data],
             ["number", data.byteLength],
+            ["number", ptr]
         ]);
-        return this.err_code;
+        let context = null;
+        if (this.err_code == S4Err.NoErr) {
+            context = this.module.getValue(ptr, "*");
+        }
+        this.module._free(ptr);
+        return context;
     }
     ecc_export(context, includePrivateKey) {
-        // S4Err ECC_Export(ECC_ContextRef ctx,
-        //                  int            exportPrivate,
-        //                  void*          outData,
-        //                  size_t         bufSize,
-        //                  size_t*        datSize);
+        // S4Err ECC_Export(ECC_ContextRef  ctx,
+        //                  bool            exportPrivate,
+        //                  void*           outData,
+        //                  size_t          bufSize,
+        //                  size_t*         datSize);
         const buffer_malloc_size = 1024;
         const ptr_buffer = this.module._malloc(buffer_malloc_size);
         const ptr_size = this.module._malloc(NUM_BYTES_SIZE_T);
@@ -758,9 +775,12 @@ class S4 {
     }
     /**
      * Returns whether or not the ECC key is a private key.
-     * Generally this method is used when importing key material,
-     * and you want to find ensure the imported key material is a private key,
-     * as opposed to just a public key.
+     *
+     * All generated keys (via `ecc_init`) are private.
+     * However, that's not the case if you use `ecc_import`.
+     *
+     * So this method is useful when importing key material,
+     * and you want to check the type of key that was imported.
     **/
     ecc_isPrivate(context) {
         // bool ECC_isPrivate(ECC_ContextRef ctx);
@@ -768,6 +788,45 @@ class S4 {
             ["number", context],
         ]);
         return result;
+    }
+    ecc_encrypt(context, input) {
+        // S4Err ECC_Encrypt(ECC_ContextRef pubCtx,
+        //                   const void*    inData,
+        //                   size_t         inDataLen,
+        //                   void*          outData,
+        //                   size_t         bufSize,
+        //                   size_t*        outDataLen);
+        // TODO: How do I know how big outData should be ?
+        return null;
+    }
+    ecc_decrypt(context, input) {
+        // S4Err ECC_Decrypt(ECC_ContextRef privCtx,
+        //                   const void*    inData,
+        //                   size_t         inDataLen,
+        //                   void*          outData,
+        //                   size_t         bufSize,
+        //                   size_t*        outDataLen);
+        // TODO: How do I know how big outData should be ?
+        return null;
+    }
+    ecc_sign(context, input) {
+        // S4Err ECC_Sign(ECC_ContextRef privCtx,
+        //                void*          inData,
+        //                size_t         inDataLen,
+        //                void*          outData,
+        //                size_t         bufSize,
+        //                size_t*        outDataLen);
+        // TODO: How do I know how big outData should be ?
+        return null;
+    }
+    ecc_verify(context, input) {
+        // S4Err ECC_Verify(ECC_ContextRef pubCtx,
+        //                  void*          sig,
+        //                  size_t         sigLen,
+        //                  void*          hash,
+        //                  size_t         hashLen);
+        // TODO: How do I know how big outData should be ?
+        return null;
     }
     ecc_free(context) {
         // void ECC_Free(ECC_ContextRef ctx);

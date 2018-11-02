@@ -90,6 +90,10 @@ export declare enum S4CipherAlgorithm {
     ECC384 = 300,
     ECC41417 = 301
 }
+export declare enum S4ECCAlgorithm {
+    ECC384 = 300,
+    Curve41417 = 301
+}
 export declare enum S4Property {
     KeyType = "keyType",
     KeySuite = "keySuite",
@@ -269,17 +273,23 @@ export declare class S4 {
     /**
      * ----- Elliptic-curve cryptography -----
     **/
-    ecc_init(): number | null;
-    ecc_generate(context: number, keySize: number): S4Err;
-    ecc_import(context: number, data: Readonly<Uint8Array>): S4Err;
+    ecc_init(algorithm: S4ECCAlgorithm): number | null;
+    ecc_import(data: Readonly<Uint8Array>): number | null;
     ecc_export(context: number, includePrivateKey: boolean): Uint8Array | null;
     /**
      * Returns whether or not the ECC key is a private key.
-     * Generally this method is used when importing key material,
-     * and you want to find ensure the imported key material is a private key,
-     * as opposed to just a public key.
+     *
+     * All generated keys (via `ecc_init`) are private.
+     * However, that's not the case if you use `ecc_import`.
+     *
+     * So this method is useful when importing key material,
+     * and you want to check the type of key that was imported.
     **/
     ecc_isPrivate(context: number): boolean;
+    ecc_encrypt(context: number, input: Readonly<Uint8Array>): Uint8Array | null;
+    ecc_decrypt(context: number, input: Readonly<Uint8Array>): Uint8Array | null;
+    ecc_sign(context: number, input: Readonly<Uint8Array>): Uint8Array | null;
+    ecc_verify(context: number, input: Readonly<Uint8Array>): Uint8Array | null;
     ecc_free(context: number): void;
     /**
      * ----- Key Wrappers -----

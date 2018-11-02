@@ -116,16 +116,16 @@ export enum S4CipherAlgorithm
 	"3FISH1024"   = 103,
 	THREEFISH1024 = 103,
 
-	SharedKey     =  200,
+	SharedKey     = 200,
 
-	ECC384        =  300,
-	ECC41417      =  301,
+	ECCNISTP384   = 300,
+	ECC41417      = 301,
 };
 
 export enum S4ECCAlgorithm
 {
-	ECC384     = S4CipherAlgorithm.ECC384,
-	Curve41417 = S4CipherAlgorithm.ECC41417
+	NISTP384    = S4CipherAlgorithm.ECCNISTP384,
+	Curve41417  = S4CipherAlgorithm.ECC41417
 };
 
 export enum S4Property {
@@ -620,14 +620,18 @@ export class S4 {
 		//                   const void*      in,
 		//                   size_t           bytesIn,
 		//                   void*            out);
+		// 
+		// Notes:
+		// - ECB_Encrypt will encrypt multiple blocks.
+		//   For example, if the block size is 16 bytes (128 bits),
+		//   you can pass in 32 bytes, and it will encrypt 2 blocks.
+		// 
+		// - The input must be a multiple of the blockSize,
+		//   or S4 will return an error.
 
 		const {algorithm, key, input} = options;
 
-		const data_size = this.cipher_getBlockSize(algorithm);
-		if (data_size == null) {
-			return null;
-		}
-
+		const data_size = input.byteLength;
 		const ptr_data = this.module._malloc(data_size);
 
 		this.err_code = this.ccall_wrapper(
@@ -663,14 +667,18 @@ export class S4 {
 		//                   const void*      in,
 		//                   size_t           bytesIn,
 		//                   void*            out);
+		// 
+		// Notes:
+		// - ECB_Decrypt will decrypt multiple blocks.
+		//   For example, if the block size is 16 bytes (128 bits),
+		//   you can pass in 32 bytes, and it will decrypt 2 blocks.
+		// 
+		// - The input must be a multiple of the blockSize,
+		//   or S4 will return an error.
 
 		const {algorithm, key, input} = options;
 
-		const data_size = this.cipher_getBlockSize(algorithm);
-		if (data_size == null) {
-			return null;
-		}
-
+		const data_size = input.byteLength;
 		const ptr_data = this.module._malloc(data_size);
 
 		this.err_code = this.ccall_wrapper(
@@ -774,17 +782,16 @@ export class S4 {
 		//                   const void*	   in,
 		//                   size_t         bytesIn,
 		//                   void*          out);
+		// 
+		// Notes:
+		// - CBC_Encrypt will encrypt multiple blocks.
+		//   For example, if the block size is 16 bytes (128 bits),
+		//   you can pass in 32 bytes, and it will encrypt 2 blocks.
+		// 
+		// - The input must be a multiple of the blockSize,
+		//   or S4 will return an error.
 
-		const algorithm = this.cbc_getAlgorithm(context);
-		if (algorithm == null) {
-			return null;
-		}
-
-		const data_size = this.cipher_getBlockSize(algorithm);
-		if (data_size == null) {
-			return null;
-		}
-
+		const data_size = input.byteLength;
 		const ptr_data = this.module._malloc(data_size);
 
 		this.err_code = this.ccall_wrapper(
@@ -812,17 +819,16 @@ export class S4 {
 		//                   const void*    in,
 		//                   size_t         bytesIn,
 		//                   void*          out);
+		// 
+		// Notes:
+		// - CBC_Decrypt will decrypt multiple blocks.
+		//   For example, if the block size is 16 bytes (128 bits),
+		//   you can pass in 32 bytes, and it will decrypt 2 blocks.
+		// 
+		// - The input must be a multiple of the blockSize,
+		//   or S4 will return an error.
 
-		const algorithm = this.cbc_getAlgorithm(context);
-		if (algorithm == null) {
-			return null;
-		}
-
-		const data_size = this.cipher_getBlockSize(algorithm);
-		if (data_size == null) {
-			return null;
-		}
-
+		const data_size = input.byteLength;
 		const ptr_data = this.module._malloc(data_size);
 
 		this.err_code = this.ccall_wrapper(

@@ -1,6 +1,8 @@
+import * as fs from 'fs';
+
+import * as _ from 'lodash';
 import { expect } from 'chai';
 import 'mocha';
-import * as _ from 'lodash';
 
 import {
 	S4,
@@ -47,7 +49,8 @@ function loadS4(
 			isRuntimeInitialized: boolean,
 			onRuntimeInitialized: ()=>void,
 			print: (text: string)=>void,
-			printErr: (text: string)=>void
+			printErr: (text: string)=>void,
+			instantiateWasm?: (imports: any, callback: any)=>void,
 		}
 	}
 	const s4global = ((global as unknown) as S4Global);
@@ -81,13 +84,47 @@ function loadS4(
 			},
 			printErr: (text)=> {
 				console.log("WASM [err]: "+ text);
+			},
+			/*
+			instantiateWasm: (imports, callback)=> {
+
+				const ts_a = Date.now();
+				console.log("A: "+ ts_a);
+				const stream = fs.readFile('dist/libS4.wasm', {}, (err, data)=>{
+
+					if (err)
+					{
+						console.log("Error reading file: "+ err);
+						return;
+					}
+
+					const ts_b = Date.now();
+					console.log("B: "+ ts_b +" => "+ (ts_b - ts_a) +" milliseconds");
+					WebAssembly.instantiate(data, imports).then((output)=> {
+						
+						const ts_c = Date.now();
+						console.log("C: "+ ts_c +" => "+ (ts_c - ts_b) +" milliseconds");
+						callback(output.instance);
+						
+					}).catch((reason)=> {
+						
+						const ts_c = Date.now();
+						console.log("C: "+ ts_c +" => "+ (ts_c - ts_b) +" milliseconds");
+						console.log("WebAssembly.instantiateStreaming() failed: "+ reason);
+					});
+				});
+
+				return {};
 			}
+			*/
 		};
 		
 		require('../dist/libS4.js');
 
 		const wasmReady = ()=> {
 			
+			console.log("Object.keys(s4global.ModuleS4): "+ Object.keys(s4global.ModuleS4));
+
 			const s4 = S4.load(s4global.ModuleS4);
 			if (s4 == null)
 			{
@@ -109,6 +146,7 @@ function loadS4(
 		}
 	}
 }
+
 
 describe('load S4', ()=> {
 
@@ -327,7 +365,7 @@ describe('hash_stream', ()=> {
 	});
 });
 
-describe('cipher_ebc', ()=> {
+describe('cipher_ecb', ()=> {
 
 	it('callback', (done)=> {
 
@@ -388,62 +426,28 @@ describe('cipher_ebc', ()=> {
 
 				{ // Test encryption
 
-					const encrypted_blocks: Uint8Array[] = [];
-					let offset = 0;
-
-					while (offset < test.plaintext.byteLength)
-					{
-						expect(offset + block_size).to.be.lte(test.plaintext.byteLength);
-
-						const plaintext_block = test.plaintext.slice(offset, offset+block_size);
-						const encrypted_block = s4.ecb_encrypt({
-							algorithm : test.algorithm,
-							key       : new Uint8Array(Buffer.from(test.key, 'hex')),
-							input     : plaintext_block
-						});
-
-						expect(encrypted_block).to.be.not.null;
-						if (encrypted_block) {
-							encrypted_blocks.push(encrypted_block);
-						}
-
-						offset += block_size;
-					}
-
-					encrypted = s4.util_concatBuffers(encrypted_blocks);
-					const expected = new Uint8Array(Buffer.from(test.knownAnswer, 'hex'));
+					encrypted = s4.ecb_encrypt({
+						algorithm : test.algorithm,
+						key       : new Uint8Array(Buffer.from(test.key, 'hex')),
+						input     : test.plaintext
+					})!;
+					expect(encrypted).to.be.not.null;
 
 					console.log(`- ${_.padStart(S4CipherAlgorithm[test.algorithm], 8)}: ${s4.util_hexString(encrypted)}`);
 
+					const expected = new Uint8Array(Buffer.from(test.knownAnswer, 'hex'));
 					const encryption_match = s4.util_compareBuffers(encrypted, expected);
 					expect(encryption_match).to.be.true;
 				}
 				
 				{ // Test decryption
 
-					const decrypted_blocks: Uint8Array[] = [];
-					let offset = 0;
-
-					while (offset < encrypted.byteLength)
-					{
-						expect(offset + block_size).to.be.lte(encrypted.byteLength);
-
-						const encrypted_block = encrypted.slice(offset, offset+block_size);
-						const decrypted_block = s4.ecb_decrypt({
-							algorithm : test.algorithm,
-							key       : new Uint8Array(Buffer.from(test.key, 'hex')),
-							input     : encrypted_block
-						});
-
-						expect(decrypted_block).to.be.not.null;
-						if (decrypted_block) {
-							decrypted_blocks.push(decrypted_block);
-						}
-
-						offset += block_size;
-					}
-
-					const decrypted = s4.util_concatBuffers(decrypted_blocks);
+					const decrypted = s4.ecb_decrypt({
+						algorithm : test.algorithm,
+						key       : new Uint8Array(Buffer.from(test.key, 'hex')),
+						input     : encrypted
+					})!;
+					expect(decrypted).to.be.not.null;
 
 					const decryption_match = s4.util_compareBuffers(decrypted, test.plaintext);
 					expect(decryption_match).to.be.true;
@@ -530,29 +534,12 @@ describe('cipher_cbc', ()=> {
 					})!;
 					expect(context).to.be.not.null;
 
-					const encrypted_blocks: Uint8Array[] = [];
-					let offset = 0;
-
-					while (offset < test.plaintext.byteLength)
-					{
-						expect(offset + block_size).to.be.lte(test.plaintext.byteLength);
-
-						const plaintext_block = test.plaintext.slice(offset, offset+block_size);
-						const encrypted_block = s4.cbc_encrypt(context, plaintext_block);
-
-						expect(encrypted_block).to.be.not.null;
-						if (encrypted_block) {
-							encrypted_blocks.push(encrypted_block);
-						}
-
-						offset += block_size;
-					}
-
-					encrypted = s4.util_concatBuffers(encrypted_blocks);
-					const expected = new Uint8Array(Buffer.from(test.knownAnswer, 'hex'));
+					encrypted = s4.cbc_encrypt(context, test.plaintext)!;
+					expect(encrypted).to.be.not.null;
 
 					console.log(`- ${_.padStart(S4CipherAlgorithm[test.algorithm], 10)}: ${s4.util_hexString(encrypted)}`);
-
+					
+					const expected = new Uint8Array(Buffer.from(test.knownAnswer, 'hex'));
 					const encryption_match = s4.util_compareBuffers(encrypted, expected);
 					expect(encryption_match).to.be.true;
 
@@ -568,25 +555,8 @@ describe('cipher_cbc', ()=> {
 					})!;
 					expect(context).to.be.not.null;
 
-					const decrypted_blocks: Uint8Array[] = [];
-					let offset = 0;
-
-					while (offset < encrypted.byteLength)
-					{
-						expect(offset + block_size).to.be.lte(encrypted.byteLength);
-
-						const encrypted_block = encrypted.slice(offset, offset+block_size);
-						const decrypted_block = s4.cbc_decrypt(context, encrypted_block);
-
-						expect(decrypted_block).to.be.not.null;
-						if (decrypted_block) {
-							decrypted_blocks.push(decrypted_block);
-						}
-
-						offset += block_size;
-					}
-
-					const decrypted = s4.util_concatBuffers(decrypted_blocks);
+					const decrypted = s4.cbc_decrypt(context, encrypted)!;
+					expect(decrypted).to.be.not.null;
 
 					const decryption_match = s4.util_compareBuffers(decrypted, test.plaintext);
 					expect(decryption_match).to.be.true;
@@ -635,6 +605,27 @@ describe('cipher_cbc_pad', ()=> {
 					iv          : iv,
 					knownAnswer : "7e0cd07e6dd9b85abaf7663ca6b2e4366e8c2fcf57d577ba75a8b44d2340a788163022487d70d29f21ac797f83503625a7d9f9dd74e5c06cc6250d8f5dd0dec6F4CA0FFCE51AAFF19CD6CA5FA4340CD8"
 				},
+				{
+					algorithm   : S4CipherAlgorithm.AES192,
+					plaintext   : new Uint8Array(plaintext.buffer, 0, 64),
+					key         : "00010203050607080A0B0C0D0F10111214151617191A1B1C",
+					iv          : iv,
+					knownAnswer : "b866d6ca74feb44e2a51faf383fe09b9c5638bec5d5cc15e65899e9f1f9485b16ad7511b3569fe097324d4a49d5ff5847e2a474e397a35a895b3311b81cab15c221BDFC05AAF1F5D7D269EF430EAFAC0"
+				},
+				{
+					algorithm   : S4CipherAlgorithm.AES256,
+					plaintext   : new Uint8Array(plaintext.buffer, 0, 64),
+					key         : "00010203050607080A0B0C0D0F10111214151617191A1B1C1E1F202123242526",
+					iv          : iv,
+					knownAnswer : "2c9391a6c1221be66f494b07181797d99f52aca2994c259e3e3ea5a111a4e78489a01a5cff12f539c0a68d4f306a2f1e87ec63527df7864028a189bd1db5c3001BC6ECBE9EB76711522A637AFB3CAA42"
+				},
+				{
+					algorithm   : S4CipherAlgorithm.TWOFISH256,
+					plaintext   : new Uint8Array(plaintext.buffer, 0, 64),
+					key         : "00010203050607080A0B0C0D0F10111214151617191A1B1C1E1F202123242526",
+					iv          : iv,
+					knownAnswer : "87f31157d34886a88184dcaf185a6a86bb8aeabc7afc59aa89a772ce32d6464da38b6848735f3f49bc0e9dbd12ba0c35b98c3f2e7f03ab00300803b8623efd9dF605A445E3B15CBF8F727FFC2805E9E3"
+				}
 			];
 
 			for (const test of testSuite)
@@ -647,73 +638,40 @@ describe('cipher_cbc_pad', ()=> {
 
 				{ // Test encryption
 
-					const encrypted_blocks: Uint8Array[] = [];
-					let offset = 0;
+					encrypted = s4.cbc_encryptPad({
+						algorithm : test.algorithm,
+						key       : new Uint8Array(Buffer.from(test.key, 'hex')),
+						iv        : new Uint8Array(Buffer.from(test.iv, 'hex')),
+						input     : test.plaintext
+					})!;
+					expect(encrypted).to.be.not.null;
 
-					while (offset < test.plaintext.byteLength)
-					{
-						expect(offset + block_size).to.be.lte(test.plaintext.byteLength);
-
-						const plaintext_block = test.plaintext.slice(offset, offset+block_size);
-						const encrypted_block = s4.cbc_encryptPad({
-							algorithm : test.algorithm,
-							key       : new Uint8Array(Buffer.from(test.key, 'hex')),
-							iv        : new Uint8Array(Buffer.from(test.iv, 'hex')),
-							input     : plaintext_block
-						});
-
-						expect(encrypted_block).to.be.not.null;
-						if (encrypted_block) {
-							encrypted_blocks.push(encrypted_block);
-						}
-
-						offset += block_size;
-					}
-
-					encrypted = s4.util_concatBuffers(encrypted_blocks);
 					const expected = new Uint8Array(Buffer.from(test.knownAnswer, 'hex'));
 
 					console.log(`- ${_.padStart(S4CipherAlgorithm[test.algorithm], 10)}: ${s4.util_hexString(encrypted)}`);
-					console.log(`- ${_.padStart("expected", 10)}: ${s4.util_hexString(expected)}`);
+				//	console.log(`- ${_.padStart("expected", 10)}: ${s4.util_hexString(expected)}`);
 
-				//	const encryption_match = s4.util_compareBuffers(encrypted, expected);
-				//	expect(encryption_match).to.be.true;
+					const encryption_match = s4.util_compareBuffers(encrypted, expected);
+					expect(encryption_match).to.be.true;
 				}
-				/*
-				{ // Test decryption
+				
+				 { // Test decryption
 
-					const decrypted_blocks: Uint8Array[] = [];
-					let offset = 0;
+				 	const decrypted = s4.cbc_decryptPad({
+				 		algorithm : test.algorithm,
+				 		key       : new Uint8Array(Buffer.from(test.key, 'hex')),
+				 		iv        : new Uint8Array(Buffer.from(test.iv, 'hex')),
+				 		input     : encrypted
+					 })!;
+					 expect(decrypted).to.be.not.null;
 
-					while (offset < encrypted.byteLength)
-					{
-						expect(offset + block_size).to.be.lte(encrypted.byteLength);
-
-						const encrypted_block = encrypted.slice(offset, offset+block_size);
-						const decrypted_block = s4.cbc_decryptPad({
-							algorithm : test.algorithm,
-							key       : new Uint8Array(Buffer.from(test.key, 'hex')),
-							iv        : new Uint8Array(Buffer.from(test.iv, 'hex')),
-							input     : encrypted_block
-						});
-
-						expect(decrypted_block).to.be.not.null;
-						if (decrypted_block) {
-							decrypted_blocks.push(decrypted_block);
-						}
-
-						offset += block_size;
-					}
-
-					const decrypted = s4.util_concatBuffers(decrypted_blocks);
-
-					const decryption_match = s4.util_compareBuffers(decrypted, test.plaintext);
-					expect(decryption_match).to.be.true;
-				}
-				*/
+				 	const decryption_match = s4.util_compareBuffers(decrypted, test.plaintext);
+				 	expect(decryption_match).to.be.true;
+				 }
 			}
 
 			done();
 		});
 	});
 });
+
